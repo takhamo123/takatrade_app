@@ -15,8 +15,8 @@ pd.options.mode.chained_assignment = None
 # --- 1. CONFIG & UI PREMIUM ---
 st.set_page_config(page_title="TAKATRADE PRO", layout="wide", page_icon="logo_takatrade.png")
 
-# Auto-refresh halaman setiap 5 menit
-st.markdown('<meta http-equiv="refresh" content="300">', unsafe_allow_html=True)
+# PERBAIKAN: Refresh diset ke 1200 detik (20 menit) agar proses Radar tidak terputus otomatis
+st.markdown('<meta http-equiv="refresh" content="1200">', unsafe_allow_html=True)
 
 st.markdown("""
     <style>
@@ -138,7 +138,6 @@ if selected == "Intelligence":
                     m3, m4 = st.columns(2); m3.metric("AI Confidence", f"{acc:.1f}%"); m4.metric("Sentiment", sentiment)
                     st.markdown(f"<div style='text-align:center; padding:10px; background:#111; border:1px solid {color}; border-radius:10px; margin-bottom:20px;'><h2 style='margin:0; color:{color};'>{action}</h2><p style='margin:0; color:gray; font-size:12px;'>TP: {curr*1.015:,.4f} | SL: {curr*0.993:,.4f}</p></div>", unsafe_allow_html=True)
                     
-                    # --- FIX VISUALISASI TIMEZONE & CALIBRATION ---
                     df_plot = df_raw.copy()
                     df_plot.index = pd.to_datetime(df_plot.index)
                     if df_plot.index.tz is None:
@@ -146,9 +145,9 @@ if selected == "Intelligence":
                     else:
                         df_plot.index = df_plot.index.tz_convert('Asia/Jakarta')
 
-                    # LOGIKA KALIBRASI: Paksa sinkron ke waktu WIB sistem sekarang
+                    # LOGIKA KALIBRASI
                     diff_time = waktu_wib.replace(tzinfo=None) - df_plot.index[-1].replace(tzinfo=None)
-                    if abs(diff_time.total_seconds()) > 60: # Jika selisih lebih dari 1 menit
+                    if abs(diff_time.total_seconds()) > 60:
                         df_plot.index = df_plot.index + diff_time
 
                     fig = go.Figure()
@@ -243,6 +242,7 @@ st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learni
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
