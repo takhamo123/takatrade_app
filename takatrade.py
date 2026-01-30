@@ -35,18 +35,39 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. DATABASE ASET GLOBAL LENGKAP ---
-crypto_list = sorted(["BTC-USD", "ETH-USD", "BNB-USD", "SOL-USD", "XRP-USD", "ADA-USD", "DOGE-USD", "TRX-USD", "DOT-USD", "MATIC-USD", "LTC-USD", "SHIB-USD", "AVAX-USD", "LINK-USD", "NEAR-USD", "ARB-USD", "SUI-USD", "PEPE-USD", "RENDER-USD", "FET-USD"])
+# --- 2. DATABASE ASET GLOBAL MASIF (FULL CRYPTO & FOREX) ---
+crypto_list = sorted([
+    # Market Leaders & Majors
+    "BTC-USD", "ETH-USD", "BNB-USD", "SOL-USD", "XRP-USD", "ADA-USD", "DOGE-USD", "TRX-USD", 
+    "DOT-USD", "MATIC-USD", "LTC-USD", "AVAX-USD", "LINK-USD", "BCH-USD", "SHIB-USD",
+    # Layer 1 & Layer 2 Ecosystems
+    "NEAR-USD", "ARB-USD", "OP-USD", "SUI-USD", "APT-USD", "TIA-USD", "SEI-USD", "INJ-USD",
+    "STX-USD", "ALGO-USD", "FTM-USD", "EGLD-USD", "ATOM-USD", "HBAR-USD", "IMX-USD",
+    # AI & DePIN & RWA
+    "FET-USD", "RENDER-USD", "TAO-USD", "RNDR-USD", "AKASH-USD", "ONDO-USD", "PENDLE-USD",
+    # DeFi & Exchange Tokens
+    "UNI-USD", "AAVE-USD", "LDO-USD", "MKR-USD", "RUNE-USD", "JUP-USD", "CAKE-USD", "OKB-USD",
+    # Meme Coins & Community
+    "PEPE-USD", "BONK-USD", "WIF-USD", "FLOKI-USD", "POPCAT-USD", "BRETT-USD", "MOG-USD"
+])
+
+# Forex & Global Indices (Comprehensive)
+global_indices_forex = sorted([
+    # Forex Majors, Minors & Crosses
+    "EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X", "USDCAD=X", "USDCHF=X", "NZDUSD=X", 
+    "EURGBP=X", "EURJPY=X", "GBPJPY=X", "AUDJPY=X", "EURCHF=X", "CHFJPY=X", "EURAUD=X",
+    "GBPAUD=X", "CADJPY=X", "NZDJPY=X", "AUDNZD=X",
+    # Forex Exotic & Regional
+    "USDIDR=X", "SGDIDR=X", "USDSGD=X", "USDTHB=X", "USDHKD=X", "USDCNY=X", "USDMXN=X",
+    "USDMYR=X", "USDPHP=X", "USDVND=X", "USDKRW=X",
+    # Global Stock Indices
+    "^JKSE", "^GSPC", "^IXIC", "^DJI", "^N225", "^HSI", "^FTSE", "^GDAXI", "^FCHI", "^AXJO", "^STI",
+    # Commodities & Energies
+    "GC=F", "SI=F", "CL=F", "BZ=F", "HG=F", "NG=F", "PA=F", "PL=F"
+])
+
 stock_us = sorted(["NVDA", "TSLA", "AAPL", "MSFT", "GOOGL", "AMZN", "META", "AMD", "NFLX", "COIN", "JPM", "V"])
 stock_id = sorted(["BBCA.JK", "BBRI.JK", "TLKM.JK", "BMRI.JK", "ASII.JK", "GOTO.JK", "ANTM.JK", "ADRO.JK", "BBNI.JK", "UNVR.JK", "BRMS.JK"])
-
-# Penambahan Global Indices & Forex Lengkap
-global_indices_forex = sorted([
-    "EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X", "USDCAD=X", "USDCHF=X", "NZDUSD=X", 
-    "USDIDR=X", "SGDIDR=X", "USDSGD=X", "GBPJPY=X", "EURJPY=X",
-    "^JKSE", "^GSPC", "^IXIC", "^DJI", "^N225", "^HSI", "^FTSE", # IHSG, S&P500, Nasdaq, dll
-    "GC=F", "SI=F", "CL=F", "BZ=F", "HG=F" # Gold, Silver, Oil, dll
-])
 
 database_aset = {
     "🌍 GLOBAL MARKET & FOREX": global_indices_forex,
@@ -57,7 +78,7 @@ database_aset = {
 
 # --- 3. SIDEBAR NAVIGATION ---
 with st.sidebar:
-    st.markdown('<div class="logo-container">TAKATRADE</div>', unsafe_allow_html=True)
+    st.markdown('<div class="logo-container">TAKATRADE PRO</div>', unsafe_allow_html=True)
     
     st.markdown("""
         <p style='text-align: center; color: #FFD700; font-family: sans-serif; font-size: 10px; letter-spacing: 2px; margin-top: -15px; margin-bottom: 25px; opacity: 0.85; font-weight: bold;'>
@@ -141,7 +162,7 @@ if selected == "Intelligence":
     with c2:
         pilihan = st.multiselect("🔎 Aset", database_aset[kat], default=database_aset[kat][0])
 
-    if st.button("🔥 JALANKAN ANALISA QUANT"):
+    if st.button("EXECUTE"):
         tabs = st.tabs(pilihan)
         for i, t in enumerate(pilihan):
             with tabs[i]:
@@ -197,6 +218,7 @@ st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learni
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
