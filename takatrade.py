@@ -9,8 +9,8 @@ import plotly.graph_objects as go
 from streamlit_option_menu import option_menu
 from datetime import datetime, timedelta
 
-# --- 1. CONFIG & UI PREMIUM (TETAP ASLI) ---
-st.set_page_config(page_title="TAKATRADE PRO", layout="wide", page_icon="logo_takatrade.png")
+# --- 1. CONFIG & UI PREMIUM ---
+st.set_page_config(page_title="TAKATRADE PRO", layout="wide", page_icon="logo_takatrader.png")
 
 st.markdown("""
     <style>
@@ -35,28 +35,32 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. DATABASE ASET (DITAMBAHKAN FOREX LENGKAP) ---
+# --- 2. DATABASE ASET GLOBAL LENGKAP ---
 crypto_list = sorted(["BTC-USD", "ETH-USD", "BNB-USD", "SOL-USD", "XRP-USD", "ADA-USD", "DOGE-USD", "TRX-USD", "DOT-USD", "MATIC-USD", "LTC-USD", "SHIB-USD", "AVAX-USD", "LINK-USD", "NEAR-USD", "ARB-USD", "SUI-USD", "PEPE-USD", "RENDER-USD", "FET-USD"])
-stock_us = ["NVDA", "TSLA", "AAPL", "MSFT", "GOOGL", "AMZN", "META", "AMD"]
-stock_id = ["BBCA.JK", "BBRI.JK", "TLKM.JK", "BMRI.JK", "ASII.JK", "GOTO.JK", "ANTM.JK", "ADRO.JK"]
-# Penambahan Aset Forex Lengkap
-forex_commo = [
-    "EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X", "USDCAD=X", "USDCHF=X", "NZDUSD=X",
-    "USDIDR=X", "SGDIDR=X", "EURJPY=X", "GBPJPY=X", "GC=F", "CL=F"
-]
+stock_us = sorted(["NVDA", "TSLA", "AAPL", "MSFT", "GOOGL", "AMZN", "META", "AMD", "NFLX", "COIN", "JPM", "V"])
+stock_id = sorted(["BBCA.JK", "BBRI.JK", "TLKM.JK", "BMRI.JK", "ASII.JK", "GOTO.JK", "ANTM.JK", "ADRO.JK", "BBNI.JK", "UNVR.JK", "BRMS.JK"])
+
+# Penambahan Global Indices & Forex Lengkap
+global_indices_forex = sorted([
+    "EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X", "USDCAD=X", "USDCHF=X", "NZDUSD=X", 
+    "USDIDR=X", "SGDIDR=X", "USDSGD=X", "GBPJPY=X", "EURJPY=X",
+    "^JKSE", "^GSPC", "^IXIC", "^DJI", "^N225", "^HSI", "^FTSE", # IHSG, S&P500, Nasdaq, dll
+    "GC=F", "SI=F", "CL=F", "BZ=F", "HG=F" # Gold, Silver, Oil, dll
+])
 
 database_aset = {
+    "🌍 GLOBAL MARKET & FOREX": global_indices_forex,
     "💎 CRYPTOCURRENCY": crypto_list,
     "🇺🇸 US STOCKS": stock_us,
-    "🇮🇩 INDONESIA STOCKS": stock_id,
-    "🌍 FOREX & COMMO": sorted(forex_commo)
+    "🇮🇩 INDONESIA STOCKS": stock_id
 }
 
-# --- 3. SIDEBAR NAVIGATION (TETAP ASLI) ---
+# --- 3. SIDEBAR NAVIGATION ---
 with st.sidebar:
-    st.markdown('<div class="logo-container">TAKATRADE PRO</div>', unsafe_allow_html=True)
+    st.markdown('<div class="logo-container">TAKATRADE</div>', unsafe_allow_html=True)
+    
     st.markdown("""
-        <p style='text-align: center; color: #FFD700; font-family: sans-serif; font-size: 10px; letter-spacing: 2px; margin-top: -15px; margin-bottom: 20px; opacity: 0.8;'>
+        <p style='text-align: center; color: #FFD700; font-family: sans-serif; font-size: 10px; letter-spacing: 2px; margin-top: -15px; margin-bottom: 25px; opacity: 0.85; font-weight: bold;'>
         TERMINAL TRADING CERDAS
         </p>
     """, unsafe_allow_html=True)
@@ -73,16 +77,18 @@ with st.sidebar:
     if "epochs" not in st.session_state: st.session_state.epochs = 12
     if "modal" not in st.session_state: st.session_state.modal = 1000
 
-# --- 4. ENGINE AI (TETAP ASLI) ---
+# --- 4. ENGINE AI (LENGKAP) ---
 @st.cache_resource(show_spinner=False)
 def train_ai_pro(ticker, steps, epochs):
     df = yf.download(ticker, period='3y', interval='1d', progress=False)
     if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
     df = df.ffill()
     
+    # Penanganan jika data volume kosong (Forex)
+    if 'Volume' not in df.columns or df['Volume'].isna().all():
+        df['Volume'] = 0
+        
     scaler = MinMaxScaler()
-    # Penanganan volume untuk forex
-    if 'Volume' not in df.columns: df['Volume'] = 0
     scaled_data = scaler.fit_transform(df[['Close', 'Volume']].values)
     
     x, y, window = [], [], 60
@@ -102,6 +108,7 @@ def train_ai_pro(ticker, steps, epochs):
     model.compile(optimizer='adam', loss='mse')
     model.fit(x, y, epochs=epochs, batch_size=32, verbose=0)
     
+    # BACKTESTING 30 HARI
     test_batch = scaled_data[-(window+30):-30]
     bt_preds = []
     for _ in range(30):
@@ -112,6 +119,7 @@ def train_ai_pro(ticker, steps, epochs):
     
     accuracy = 100 - (np.mean(np.abs(scaled_data[-30:, 0] - np.array(bt_preds))) * 100)
     
+    # PREDIKSI MASA DEPAN
     last_batch = scaled_data[-window:].tolist()
     preds = []
     for _ in range(steps):
@@ -122,10 +130,10 @@ def train_ai_pro(ticker, steps, epochs):
     res_preds = scaler.inverse_transform(np.column_stack([preds, [0]*steps]))[:, 0]
     return df, res_preds, accuracy
 
-# --- 5. MAIN DASHBOARD (TETAP ASLI + SENTIMEN) ---
+# --- 5. MAIN DASHBOARD ---
 if selected == "Intelligence":
     waktu_wib = datetime.utcnow() + timedelta(hours=7)
-    st.markdown(f"### TAKATRADE Pro | {waktu_wib.strftime('%H:%M')} WIB")
+    st.markdown(f"### 🛡️ Terminal Intelligence | {waktu_wib.strftime('%H:%M')} WIB")
     
     c1, c2 = st.columns([1, 2])
     with c1:
@@ -142,8 +150,11 @@ if selected == "Intelligence":
                     curr, target = float(hist['Close'].iloc[-1]), float(preds[-1])
                     pct = ((target - curr) / curr) * 100
                     
-                    # Logika Sentimen Sesuai Kebutuhan
-                    vol_chg = (hist['Volume'].iloc[-1] / hist['Volume'].rolling(10).mean().iloc[-1]) if hist['Volume'].iloc[-1] != 0 else 1
+                    # Analisa Volume
+                    vol_avg = hist['Volume'].rolling(10).mean().iloc[-1]
+                    vol_curr = hist['Volume'].iloc[-1]
+                    vol_chg = (vol_curr / vol_avg) if vol_avg != 0 else 1
+                    
                     sentiment = "POSITIVE ✨" if pct > 0 and vol_chg > 1 else "NEGATIVE ⚠️" if pct < 0 else "NEUTRAL ⚖️"
 
                     if pct > 1.5 and vol_chg > 1: action, color = "STRONG BUY 🟢", "#00FFCC"
@@ -156,7 +167,7 @@ if selected == "Intelligence":
                     m2.metric(f"Target ({horizon_label})", f"{target:,.2f}", f"{pct:+.2f}%")
                     m3, m4 = st.columns(2)
                     m3.metric("AI Confidence", f"{acc:.1f}%")
-                    m4.metric("Sentiment", sentiment) # SENTIMEN MUNCUL KEMBALI DI SINI
+                    m4.metric("Sentiment", sentiment)
                     
                     st.markdown(f"<div style='text-align:center; padding:10px; background:#111; border:1px solid {color}; border-radius:10px; margin-bottom:20px;'><h2 style='margin:0; color:{color};'>{action}</h2></div>", unsafe_allow_html=True)
                     
@@ -174,7 +185,6 @@ else:
     ai_speed = st.select_slider("Akurasi Model", options=["Fast", "Balanced", "Precision"], value="Balanced")
     st.session_state.epochs = 5 if ai_speed == "Fast" else 15 if ai_speed == "Balanced" else 30
     st.session_state.modal = st.number_input("Modal Investasi ($)", value=1000)
-
 st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learning")
 
 # Instal
@@ -187,6 +197,7 @@ st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learni
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
