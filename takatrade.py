@@ -25,18 +25,6 @@ st.markdown("""
         font-size: 28px; font-weight: bold; text-align: center;
         padding: 15px 0; letter-spacing: 5px;
     }
-    /* STYLE AVATAR BARU */
-    .avatar-container {
-        display: flex;
-        justify-content: center;
-        margin-bottom: 10px;
-    }
-    .avatar-container img {
-        border-radius: 50%;
-        border: 2px solid #FFD700;
-        box-shadow: 0 0 15px rgba(255, 215, 0, 0.5);
-        object-fit: cover;
-    }
     div[data-testid="stMetric"] { background: #0a0a0a; border: 1px solid #1f1f1f; padding: 15px; border-radius: 12px; }
     .stButton>button { background: linear-gradient(45deg, #FFD700, #FF8C00); color: black; border: none; font-weight: bold; border-radius: 8px; width: 100%; height: 3.5em; }
     
@@ -62,14 +50,6 @@ database_aset = {
 # --- 3. SIDEBAR NAVIGATION ---
 with st.sidebar:
     st.markdown('<div class="logo-container">TAKATRADE</div>', unsafe_allow_html=True)
-    
-    # --- MENAMPILKAN AVATAR ---
-    st.markdown('<div class="avatar-container">', unsafe_allow_html=True)
-    # Ganti URL ini dengan nama file foto Anda yang sudah di-upload ke GitHub
-    st.image("https://www.w3schools.com/howto/img_avatar.png", width=120)
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown("<h4 style='text-align: center; color: #FFD700; margin-bottom: 20px;'>Pro Trader Mode</h4>", unsafe_allow_html=True)
-    
     selected = option_menu(None, ["Intelligence", "Settings"], 
         icons=['cpu-fill', 'gear-fill'], menu_icon="cast", default_index=0,
         styles={"nav-link-selected": {"background-color": "#FFD700", "color": "black", "font-weight": "bold"}})
@@ -131,7 +111,9 @@ def train_ai_pro(ticker, steps, epochs):
 
 # --- 5. MAIN DASHBOARD ---
 if selected == "Intelligence":
-    st.markdown(f"### 🛡️ Terminal Intelligence | {datetime.now().strftime('%H:%M')}")
+    # SINKRONISASI WAKTU KE WIB (+7 JAM)
+    waktu_wib = datetime.utcnow() + timedelta(hours=7)
+    st.markdown(f"### 🛡️ Terminal Intelligence | {waktu_wib.strftime('%H:%M')} WIB")
     
     c1, c2 = st.columns([1, 2])
     with c1:
@@ -145,8 +127,10 @@ if selected == "Intelligence":
             with tabs[i]:
                 with st.spinner(f'AI memproses {t}...'):
                     hist, preds, acc = train_ai_pro(t, steps, st.session_state.epochs)
+                    
                     curr, target = float(hist['Close'].iloc[-1]), float(preds[-1])
                     pct = ((target - curr) / curr) * 100
+                    
                     vol_chg = (hist['Volume'].iloc[-1] / hist['Volume'].rolling(10).mean().iloc[-1])
                     sentiment = "POSITIVE ✨" if pct > 0 and vol_chg > 1 else "NEGATIVE ⚠️" if pct < 0 else "NEUTRAL ⚖️"
 
@@ -158,6 +142,7 @@ if selected == "Intelligence":
                     m1, m2 = st.columns(2)
                     m1.metric("Price", f"{curr:,.2f}")
                     m2.metric(f"Target ({horizon_label})", f"{target:,.2f}", f"{pct:+.2f}%")
+                    
                     m3, m4 = st.columns(2)
                     m3.metric("AI Confidence", f"{acc:.1f}%")
                     m4.metric("Sentiment", sentiment)
@@ -165,12 +150,26 @@ if selected == "Intelligence":
                     st.markdown(f"<div style='text-align:center; padding:10px; background:#111; border:1px solid {color}; border-radius:10px; margin-bottom:20px;'><h2 style='margin:0; color:{color};'>{action}</h2></div>", unsafe_allow_html=True)
                     
                     fig = go.Figure()
-                    fig.add_trace(go.Candlestick(x=hist.index[-60:], open=hist['Open'].iloc[-60:], high=hist['High'].iloc[-60:], low=hist['Low'].iloc[-60:], close=hist['Close'].iloc[-60:], name="Market"))
+                    fig.add_trace(go.Candlestick(
+                        x=hist.index[-60:], open=hist['Open'].iloc[-60:], 
+                        high=hist['High'].iloc[-60:], low=hist['Low'].iloc[-60:], 
+                        close=hist['Close'].iloc[-60:], name="Market"
+                    ))
+                    
                     f_dates = [hist.index[-1] + timedelta(days=x) for x in range(1, steps + 1)]
                     fig.add_trace(go.Scatter(x=f_dates, y=preds, name="AI Path", line=dict(color='#FFD700', width=3, dash='dot')))
                     
-                    fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, height=450, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=5, r=5, t=30, b=5), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+                    fig.update_layout(
+                        template="plotly_dark", 
+                        xaxis_rangeslider_visible=False, 
+                        height=450, 
+                        paper_bgcolor='rgba(0,0,0,0)', 
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        margin=dict(l=5, r=5, t=30, b=5), 
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
                     st.plotly_chart(fig, use_container_width=True)
+                    
                     st.info(f"💡 **AI Logic:** Akurasi backtest {acc:.1f}%. Analisa Volume menunjukkan tren {'kuat' if vol_chg > 1 else 'lemah'}.")
 
 else:
@@ -179,7 +178,7 @@ else:
     st.session_state.epochs = 5 if ai_speed == "Fast" else 15 if ai_speed == "Balanced" else 30
     st.session_state.modal = st.number_input("Modal Investasi ($)", value=1000)
 
-st.caption("TAKATRADE PRO | Ultimate Android Edition")
+st.caption("TAKATRADE PRO")
 
 # Instal
 # pip install streamlit yfinance pandas pandas_ta numpy scikit-learn tensorflow plotly streamlit-option-menu scipy
@@ -191,3 +190,4 @@ st.caption("TAKATRADE PRO | Ultimate Android Edition")
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
