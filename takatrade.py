@@ -37,32 +37,22 @@ st.markdown("""
 
 # --- 2. DATABASE ASET GLOBAL MASIF (FULL CRYPTO & FOREX) ---
 crypto_list = sorted([
-    # Market Leaders & Majors
     "BTC-USD", "ETH-USD", "BNB-USD", "SOL-USD", "XRP-USD", "ADA-USD", "DOGE-USD", "TRX-USD", 
     "DOT-USD", "MATIC-USD", "LTC-USD", "AVAX-USD", "LINK-USD", "BCH-USD", "SHIB-USD",
-    # Layer 1 & Layer 2 Ecosystems
     "NEAR-USD", "ARB-USD", "OP-USD", "SUI-USD", "APT-USD", "TIA-USD", "SEI-USD", "INJ-USD",
     "STX-USD", "ALGO-USD", "FTM-USD", "EGLD-USD", "ATOM-USD", "HBAR-USD", "IMX-USD",
-    # AI & DePIN & RWA
     "FET-USD", "RENDER-USD", "TAO-USD", "RNDR-USD", "AKASH-USD", "ONDO-USD", "PENDLE-USD",
-    # DeFi & Exchange Tokens
     "UNI-USD", "AAVE-USD", "LDO-USD", "MKR-USD", "RUNE-USD", "JUP-USD", "CAKE-USD", "OKB-USD",
-    # Meme Coins & Community
     "PEPE-USD", "BONK-USD", "WIF-USD", "FLOKI-USD", "POPCAT-USD", "BRETT-USD", "MOG-USD"
 ])
 
-# Forex & Global Indices (Comprehensive)
 global_indices_forex = sorted([
-    # Forex Majors, Minors & Crosses
     "EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X", "USDCAD=X", "USDCHF=X", "NZDUSD=X", 
     "EURGBP=X", "EURJPY=X", "GBPJPY=X", "AUDJPY=X", "EURCHF=X", "CHFJPY=X", "EURAUD=X",
     "GBPAUD=X", "CADJPY=X", "NZDJPY=X", "AUDNZD=X",
-    # Forex Exotic & Regional
     "USDIDR=X", "SGDIDR=X", "USDSGD=X", "USDTHB=X", "USDHKD=X", "USDCNY=X", "USDMXN=X",
     "USDMYR=X", "USDPHP=X", "USDVND=X", "USDKRW=X",
-    # Global Stock Indices
     "^JKSE", "^GSPC", "^IXIC", "^DJI", "^N225", "^HSI", "^FTSE", "^GDAXI", "^FCHI", "^AXJO", "^STI",
-    # Commodities & Energies
     "GC=F", "SI=F", "CL=F", "BZ=F", "HG=F", "NG=F", "PA=F", "PL=F"
 ])
 
@@ -92,20 +82,26 @@ with st.sidebar:
 
     st.markdown("---")
     st.subheader("⏱️ Forecasting Horizon")
-    horizon_label = st.select_slider("Pilih Jangka Waktu", options=["1d", "7d", "30d"])
-    steps = 1 if horizon_label == "1d" else 7 if horizon_label == "7d" else 30
+    # Penyesuaian opsi sesuai permintaan user
+    horizon_label = st.select_slider("Pilih Jangka Waktu", options=["5m", "10m", "15m", "30m", "1h", "1d", "1wk", "1mo"])
+    
+    # Mapping otomatis untuk stabilitas API YFinance
+    interval_map = {"5m":"5m", "10m":"2m", "15m":"15m", "30m":"30m", "1h":"60m", "1d":"1d", "1wk":"1wk", "1mo":"1mo"}
+    period_map = {"5m":"1d", "10m":"1d", "15m":"5d", "30m":"5d", "1h":"1mo", "1d":"3y", "1wk":"max", "1mo":"max"}
+    
+    steps = 1 # Single point target
     
     if "epochs" not in st.session_state: st.session_state.epochs = 12
     if "modal" not in st.session_state: st.session_state.modal = 1000
 
 # --- 4. ENGINE AI (LENGKAP) ---
 @st.cache_resource(show_spinner=False)
-def train_ai_pro(ticker, steps, epochs):
-    df = yf.download(ticker, period='3y', interval='1d', progress=False)
+def train_ai_pro(ticker, interval, period, steps, epochs):
+    df = yf.download(ticker, period=period, interval=interval, progress=False)
+    if df.empty: return None, None, 0
     if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
     df = df.ffill()
     
-    # Penanganan jika data volume kosong (Forex)
     if 'Volume' not in df.columns or df['Volume'].isna().all():
         df['Volume'] = 0
         
@@ -113,6 +109,8 @@ def train_ai_pro(ticker, steps, epochs):
     scaled_data = scaler.fit_transform(df[['Close', 'Volume']].values)
     
     x, y, window = [], [], 60
+    if len(scaled_data) <= window: window = len(scaled_data) // 2
+    
     for i in range(window, len(scaled_data)):
         x.append(scaled_data[i-window:i])
         y.append(scaled_data[i, 0])
@@ -129,16 +127,17 @@ def train_ai_pro(ticker, steps, epochs):
     model.compile(optimizer='adam', loss='mse')
     model.fit(x, y, epochs=epochs, batch_size=32, verbose=0)
     
-    # BACKTESTING 30 HARI
-    test_batch = scaled_data[-(window+30):-30]
+    # BACKTESTING 10 candles
+    test_len = 10 if len(scaled_data) > 10 else 1
+    test_batch = scaled_data[-(window+test_len):-test_len]
     bt_preds = []
-    for _ in range(30):
+    for _ in range(test_len):
         p = model.predict(test_batch.reshape(1, window, 2), verbose=0)
         bt_preds.append(p[0, 0])
-        new_entry = np.array([[p[0, 0], scaled_data[-30+len(bt_preds)-1, 1]]])
+        new_entry = np.array([[p[0, 0], scaled_data[-test_len+len(bt_preds)-1, 1]]])
         test_batch = np.append(test_batch[1:], new_entry, axis=0)
     
-    accuracy = 100 - (np.mean(np.abs(scaled_data[-30:, 0] - np.array(bt_preds))) * 100)
+    accuracy = 100 - (np.mean(np.abs(scaled_data[-test_len:, 0] - np.array(bt_preds))) * 100)
     
     # PREDIKSI MASA DEPAN
     last_batch = scaled_data[-window:].tolist()
@@ -167,13 +166,17 @@ if selected == "Intelligence":
         for i, t in enumerate(pilihan):
             with tabs[i]:
                 with st.spinner(f'AI memproses {t}...'):
-                    hist, preds, acc = train_ai_pro(t, steps, st.session_state.epochs)
-                    curr, target = float(hist['Close'].iloc[-1]), float(preds[-1])
+                    df_raw, preds, acc = train_ai_pro(t, interval_map[horizon_label], period_map[horizon_label], steps, st.session_state.epochs)
+                    
+                    if df_raw is None:
+                        st.error(f"Gagal mengambil data untuk {t}. Coba jangka waktu lain.")
+                        continue
+                        
+                    curr, target = float(df_raw['Close'].iloc[-1]), float(preds[-1])
                     pct = ((target - curr) / curr) * 100
                     
-                    # Analisa Volume
-                    vol_avg = hist['Volume'].rolling(10).mean().iloc[-1]
-                    vol_curr = hist['Volume'].iloc[-1]
+                    vol_avg = df_raw['Volume'].rolling(10).mean().iloc[-1]
+                    vol_curr = df_raw['Volume'].iloc[-1]
                     vol_chg = (vol_curr / vol_avg) if vol_avg != 0 else 1
                     
                     sentiment = "POSITIVE ✨" if pct > 0 and vol_chg > 1 else "NEGATIVE ⚠️" if pct < 0 else "NEUTRAL ⚖️"
@@ -184,8 +187,8 @@ if selected == "Intelligence":
                     else: action, color = "SELL 🔴", "#FF4B4B"
 
                     m1, m2 = st.columns(2)
-                    m1.metric("Price", f"{curr:,.2f}")
-                    m2.metric(f"Target ({horizon_label})", f"{target:,.2f}", f"{pct:+.2f}%")
+                    m1.metric("Price", f"{curr:,.4f}")
+                    m2.metric(f"Target ({horizon_label})", f"{target:,.4f}", f"{pct:+.2f}%")
                     m3, m4 = st.columns(2)
                     m3.metric("AI Confidence", f"{acc:.1f}%")
                     m4.metric("Sentiment", sentiment)
@@ -193,13 +196,18 @@ if selected == "Intelligence":
                     st.markdown(f"<div style='text-align:center; padding:10px; background:#111; border:1px solid {color}; border-radius:10px; margin-bottom:20px;'><h2 style='margin:0; color:{color};'>{action}</h2></div>", unsafe_allow_html=True)
                     
                     fig = go.Figure()
-                    fig.add_trace(go.Candlestick(x=hist.index[-60:], open=hist['Open'].iloc[-60:], high=hist['High'].iloc[-60:], low=hist['Low'].iloc[-60:], close=hist['Close'].iloc[-60:], name="Market"))
-                    f_dates = [hist.index[-1] + timedelta(days=x) for x in range(1, steps + 1)]
+                    fig.add_trace(go.Candlestick(x=df_raw.index[-60:], open=df_raw['Open'].iloc[-60:], high=df_raw['High'].iloc[-60:], low=df_raw['Low'].iloc[-60:], close=df_raw['Close'].iloc[-60:], name="Market"))
+                    
+                    # Logika penambahan waktu untuk visualisasi path masa depan
+                    last_date = df_raw.index[-1]
+                    delta_map = {"5m":5, "10m":10, "15m":15, "30m":30, "1h":60, "1d":1440, "1wk":10080, "1mo":43200}
+                    f_dates = [last_date + timedelta(minutes=delta_map[horizon_label] * (x+1)) for x in range(steps)]
+                    
                     fig.add_trace(go.Scatter(x=f_dates, y=preds, name="AI Path", line=dict(color='#FFD700', width=3, dash='dot')))
                     
                     fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, height=450, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=5, r=5, t=30, b=5), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
                     st.plotly_chart(fig, use_container_width=True)
-                    st.info(f"💡 **AI Logic:** Akurasi backtest {acc:.1f}%. Analisa Volume menunjukkan tren {'kuat' if vol_chg > 1 else 'lemah'}.")
+                    st.info(f"💡 **AI Logic:** Akurasi backtest {acc:.1f}%. Data interval {horizon_label} digunakan untuk prediksi candle berikutnya.")
 
 else:
     st.title("⚙️ Settings")
@@ -218,6 +226,7 @@ st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learni
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
