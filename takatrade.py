@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 # --- 1. CONFIG & UI PREMIUM ---
 st.set_page_config(page_title="TAKATRADE PRO", layout="wide", page_icon="logo_takatrade.png")
 
-# Auto-refresh setiap 300 detik (5 menit)
+# Tambahan Refresh 5 Menit sesuai diskusi
 st.markdown('<meta http-equiv="refresh" content="300">', unsafe_allow_html=True)
 
 st.markdown("""
@@ -38,7 +38,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. DATABASE ASET GLOBAL ---
+# --- 2. DATABASE ASET (Sesuai List Masif Anda) ---
 crypto_list = sorted(["BTC-USD", "ETH-USD", "BNB-USD", "SOL-USD", "XRP-USD", "ADA-USD", "DOGE-USD", "TRX-USD", "DOT-USD", "MATIC-USD", "LTC-USD", "AVAX-USD", "LINK-USD", "BCH-USD", "SHIB-USD", "NEAR-USD", "ARB-USD", "OP-USD", "SUI-USD", "APT-USD", "TIA-USD", "SEI-USD", "INJ-USD", "STX-USD", "ALGO-USD", "FTM-USD", "EGLD-USD", "ATOM-USD", "HBAR-USD", "IMX-USD", "FET-USD", "RENDER-USD", "TAO-USD", "RNDR-USD", "AKASH-USD", "ONDO-USD", "PENDLE-USD", "UNI-USD", "AAVE-USD", "LDO-USD", "MKR-USD", "RUNE-USD", "JUP-USD", "CAKE-USD", "OKB-USD", "PEPE-USD", "BONK-USD", "WIF-USD", "FLOKI-USD", "POPCAT-USD", "BRETT-USD", "MOG-USD"])
 global_indices_forex = sorted(["EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X", "USDCAD=X", "USDCHF=X", "NZDUSD=X", "EURGBP=X", "EURJPY=X", "GBPJPY=X", "AUDJPY=X", "EURCHF=X", "CHFJPY=X", "EURAUD=X", "GBPAUD=X", "CADJPY=X", "NZDJPY=X", "AUDNZD=X", "USDIDR=X", "SGDIDR=X", "USDSGD=X", "USDTHB=X", "USDHKD=X", "USDCNY=X", "USDMXN=X", "USDMYR=X", "USDPHP=X", "USDVND=X", "USDKRW=X", "^JKSE", "^GSPC", "^IXIC", "^DJI", "^N225", "^HSI", "^FTSE", "^GDAXI", "^FCHI", "^AXJO", "^STI", "GC=F", "SI=F", "CL=F", "BZ=F", "HG=F", "NG=F", "PA=F", "PL=F"])
 stock_us = sorted(["NVDA", "TSLA", "AAPL", "MSFT", "GOOGL", "AMZN", "META", "AMD", "NFLX", "COIN", "JPM", "V"])
@@ -59,7 +59,7 @@ with st.sidebar:
     if "epochs" not in st.session_state: st.session_state.epochs = 12
     if "modal" not in st.session_state: st.session_state.modal = 1000
 
-# --- 4. ENGINE AI ---
+# --- 4. ENGINE AI (AUDIT LENGKAP) ---
 @st.cache_resource(show_spinner=False)
 def train_ai_pro(ticker, interval, period, steps, epochs):
     df = yf.download(ticker, period=period, interval=interval, progress=False)
@@ -67,16 +67,23 @@ def train_ai_pro(ticker, interval, period, steps, epochs):
     if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
     df = df.ffill()
     if 'Volume' not in df.columns or df['Volume'].isna().all(): df['Volume'] = 0
+    
     scaler = MinMaxScaler()
     scaled_data = scaler.fit_transform(df[['Close', 'Volume']].values)
+    
     x, y, window = [], [], 60
+    # KODE PENTING: Penyesuaian window dinamis (IDENTIK DENGAN KODE ANDA)
     if len(scaled_data) <= window: window = len(scaled_data) // 2
+    
     for i in range(window, len(scaled_data)):
         x.append(scaled_data[i-window:i]); y.append(scaled_data[i, 0])
     x, y = np.array(x), np.array(y)
+    
     model = Sequential([Input(shape=(window, 2)), LSTM(64, return_sequences=True), Dropout(0.2), LSTM(32), Dense(1)])
     model.compile(optimizer='adam', loss='mse')
     model.fit(x, y, epochs=epochs, batch_size=32, verbose=0)
+    
+    # BACKTESTING 10 CANDLES
     test_len = 10 if len(scaled_data) > 10 else 1
     test_batch = scaled_data[-(window+test_len):-test_len]
     bt_preds = []
@@ -86,19 +93,20 @@ def train_ai_pro(ticker, interval, period, steps, epochs):
         new_entry = np.array([[p[0, 0], scaled_data[-test_len+len(bt_preds)-1, 1]]])
         test_batch = np.append(test_batch[1:], new_entry, axis=0)
     accuracy = 100 - (np.mean(np.abs(scaled_data[-test_len:, 0] - np.array(bt_preds))) * 100)
+    
     last_batch = scaled_data[-window:].tolist()
     preds = []
-    for _ in range(1):
+    for _ in range(steps):
         p = model.predict(np.array(last_batch[-window:]).reshape(1, window, 2), verbose=0)
         preds.append(p[0, 0])
         last_batch.append([p[0, 0], last_batch[-1][1]])
-    res_preds = scaler.inverse_transform(np.column_stack([preds, [0]*1]))[:, 0]
+    res_preds = scaler.inverse_transform(np.column_stack([preds, [0]*steps]))[:, 0]
     return df, res_preds, accuracy
 
 # --- 5. MAIN DASHBOARD ---
 if selected == "Intelligence":
     waktu_wib = datetime.utcnow() + timedelta(hours=7)
-    st.markdown(f"### TAKATRADE Pro | {waktu_wib.strftime('%H:%M:%S')} WIB <span style='font-size:12px; color:gray;'>(Auto-sync)</span>", unsafe_allow_html=True)
+    st.markdown(f"### TAKATRADE Pro | {waktu_wib.strftime('%H:%M:%S')} WIB")
     c1, c2 = st.columns([1, 2])
     with c1: kat = st.selectbox("📂 Universe", list(database_aset.keys()))
     with c2: pilihan = st.multiselect("🔎 Aset", database_aset[kat], default=database_aset[kat][0])
@@ -112,6 +120,8 @@ if selected == "Intelligence":
                     if df_raw is None: continue
                     curr, target = float(df_raw['Close'].iloc[-1]), float(preds[-1])
                     pct = ((target - curr) / curr) * 100
+                    
+                    # LOGIKA SENTIMEN VOLUME ANDA
                     vol_avg = df_raw['Volume'].rolling(10).mean().iloc[-1]
                     vol_curr = df_raw['Volume'].iloc[-1]
                     vol_chg = (vol_curr / vol_avg) if vol_avg != 0 else 1
@@ -133,7 +143,7 @@ if selected == "Intelligence":
                     fig.add_trace(go.Scatter(x=f_dates, y=preds, name="AI Path", line=dict(color='#FFD700', width=3, dash='dot')))
                     fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, height=450, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=5, r=5, t=30, b=5))
                     st.plotly_chart(fig, use_container_width=True)
-                    st.info(f"💡 **AI Logic:** Akurasi {acc:.1f}%. Analisis candle {horizon_label}.")
+                    st.info(f"💡 **AI Logic:** Akurasi {acc:.1f}%. Data interval {horizon_label} digunakan.")
 else:
     st.title("⚙️ Settings")
     ai_speed = st.select_slider("Akurasi Model", options=["Fast", "Balanced", "Precision"], value="Balanced")
@@ -151,6 +161,7 @@ st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learni
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
