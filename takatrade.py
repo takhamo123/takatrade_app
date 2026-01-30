@@ -10,7 +10,7 @@ from streamlit_option_menu import option_menu
 from datetime import datetime, timedelta
 
 # --- 1. CONFIG & UI PREMIUM ---
-st.set_page_config(page_title="TAKATRADE PRO", layout="wide", page_icon="logo_takatrader.png")
+st.set_page_config(page_title="TAKATRADE PRO", layout="wide", page_icon="logo_takatrade.png")
 
 st.markdown("""
     <style>
@@ -133,7 +133,7 @@ def train_ai_pro(ticker, steps, epochs):
 # --- 5. MAIN DASHBOARD ---
 if selected == "Intelligence":
     waktu_wib = datetime.utcnow() + timedelta(hours=7)
-    st.markdown(f"### 🛡️ Terminal Intelligence | {waktu_wib.strftime('%H:%M')} WIB")
+    st.markdown(f"### TAKATRADE Pro | {waktu_wib.strftime('%H:%M')} WIB")
     
     c1, c2 = st.columns([1, 2])
     with c1:
@@ -197,6 +197,7 @@ st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learni
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
