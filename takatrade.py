@@ -9,6 +9,9 @@ import plotly.graph_objects as go
 from streamlit_option_menu import option_menu
 from datetime import datetime, timedelta
 
+# Menghilangkan warning dekoratif pandas
+pd.options.mode.chained_assignment = None
+
 # --- 1. CONFIG & UI PREMIUM ---
 st.set_page_config(page_title="TAKATRADE PRO", layout="wide", page_icon="logo_takatrade.png")
 
@@ -38,7 +41,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. DATABASE ASET (Sesuai List Masif Anda) ---
+# --- 2. DATABASE ASET ---
 crypto_list = sorted(["BTC-USD", "ETH-USD", "BNB-USD", "SOL-USD", "XRP-USD", "ADA-USD", "DOGE-USD", "TRX-USD", "DOT-USD", "MATIC-USD", "LTC-USD", "AVAX-USD", "LINK-USD", "BCH-USD", "SHIB-USD", "NEAR-USD", "ARB-USD", "OP-USD", "SUI-USD", "APT-USD", "TIA-USD", "SEI-USD", "INJ-USD", "STX-USD", "ALGO-USD", "FTM-USD", "EGLD-USD", "ATOM-USD", "HBAR-USD", "IMX-USD", "FET-USD", "RENDER-USD", "TAO-USD", "RNDR-USD", "AKASH-USD", "ONDO-USD", "PENDLE-USD", "UNI-USD", "AAVE-USD", "LDO-USD", "MKR-USD", "RUNE-USD", "JUP-USD", "CAKE-USD", "OKB-USD", "PEPE-USD", "BONK-USD", "WIF-USD", "FLOKI-USD", "POPCAT-USD", "BRETT-USD", "MOG-USD"])
 global_indices_forex = sorted(["EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X", "USDCAD=X", "USDCHF=X", "NZDUSD=X", "EURGBP=X", "EURJPY=X", "GBPJPY=X", "AUDJPY=X", "EURCHF=X", "CHFJPY=X", "EURAUD=X", "GBPAUD=X", "CADJPY=X", "NZDJPY=X", "AUDNZD=X", "USDIDR=X", "SGDIDR=X", "USDSGD=X", "USDTHB=X", "USDHKD=X", "USDCNY=X", "USDMXN=X", "USDMYR=X", "USDPHP=X", "USDVND=X", "USDKRW=X", "^JKSE", "^GSPC", "^IXIC", "^DJI", "^N225", "^HSI", "^FTSE", "^GDAXI", "^FCHI", "^AXJO", "^STI", "GC=F", "SI=F", "CL=F", "BZ=F", "HG=F", "NG=F", "PA=F", "PL=F"])
 stock_us = sorted(["NVDA", "TSLA", "AAPL", "MSFT", "GOOGL", "AMZN", "META", "AMD", "NFLX", "COIN", "JPM", "V"])
@@ -59,7 +62,7 @@ with st.sidebar:
     if "epochs" not in st.session_state: st.session_state.epochs = 12
     if "modal" not in st.session_state: st.session_state.modal = 1000
 
-# --- 4. ENGINE AI (AUDIT LENGKAP) ---
+# --- 4. ENGINE AI ---
 @st.cache_resource(show_spinner=False)
 def train_ai_pro(ticker, interval, period, steps, epochs):
     df = yf.download(ticker, period=period, interval=interval, progress=False)
@@ -72,7 +75,6 @@ def train_ai_pro(ticker, interval, period, steps, epochs):
     scaled_data = scaler.fit_transform(df[['Close', 'Volume']].values)
     
     x, y, window = [], [], 60
-    # KODE PENTING: Penyesuaian window dinamis (IDENTIK DENGAN KODE ANDA)
     if len(scaled_data) <= window: window = len(scaled_data) // 2
     
     for i in range(window, len(scaled_data)):
@@ -83,7 +85,6 @@ def train_ai_pro(ticker, interval, period, steps, epochs):
     model.compile(optimizer='adam', loss='mse')
     model.fit(x, y, epochs=epochs, batch_size=32, verbose=0)
     
-    # BACKTESTING 10 CANDLES
     test_len = 10 if len(scaled_data) > 10 else 1
     test_batch = scaled_data[-(window+test_len):-test_len]
     bt_preds = []
@@ -121,7 +122,6 @@ if selected == "Intelligence":
                     curr, target = float(df_raw['Close'].iloc[-1]), float(preds[-1])
                     pct = ((target - curr) / curr) * 100
                     
-                    # LOGIKA SENTIMEN VOLUME ANDA
                     vol_avg = df_raw['Volume'].rolling(10).mean().iloc[-1]
                     vol_curr = df_raw['Volume'].iloc[-1]
                     vol_chg = (vol_curr / vol_avg) if vol_avg != 0 else 1
@@ -135,13 +135,45 @@ if selected == "Intelligence":
                     m3, m4 = st.columns(2); m3.metric("AI Confidence", f"{acc:.1f}%"); m4.metric("Sentiment", sentiment)
                     st.markdown(f"<div style='text-align:center; padding:10px; background:#111; border:1px solid {color}; border-radius:10px; margin-bottom:20px;'><h2 style='margin:0; color:{color};'>{action}</h2><p style='margin:0; color:gray; font-size:12px;'>TP: {curr*1.015:,.4f} | SL: {curr*0.993:,.4f}</p></div>", unsafe_allow_html=True)
                     
+                    # --- FIX VISUALISASI TIMEZONE & REAL-TIME PATH ---
+                    df_plot = df_raw.copy()
+                    df_plot.index = pd.to_datetime(df_plot.index)
+                    if df_plot.index.tz is None:
+                        df_plot.index = df_plot.index.tz_localize('UTC').tz_convert('Asia/Jakarta')
+                    else:
+                        df_plot.index = df_plot.index.tz_convert('Asia/Jakarta')
+
                     fig = go.Figure()
-                    fig.add_trace(go.Candlestick(x=df_raw.index[-60:], open=df_raw['Open'].iloc[-60:], high=df_raw['High'].iloc[-60:], low=df_raw['Low'].iloc[-60:], close=df_raw['Close'].iloc[-60:], name="Market"))
-                    last_date = df_raw.index[-1]
+                    fig.add_trace(go.Candlestick(
+                        x=df_plot.index[-60:], open=df_plot['Open'].iloc[-60:], 
+                        high=df_plot['High'].iloc[-60:], low=df_plot['Low'].iloc[-60:], 
+                        close=df_plot['Close'].iloc[-60:], name="Market"
+                    ))
+                    
+                    last_date = df_plot.index[-1]
                     delta_map = {"5m":5, "10m":10, "15m":15, "30m":30, "1h":60, "1d":1440, "1wk":10080, "1mo":43200}
                     f_dates = [last_date + timedelta(minutes=delta_map[horizon_label])]
-                    fig.add_trace(go.Scatter(x=f_dates, y=preds, name="AI Path", line=dict(color='#FFD700', width=3, dash='dot')))
-                    fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, height=450, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=5, r=5, t=30, b=5))
+                    
+                    # AI Path Gold Line
+                    fig.add_trace(go.Scatter(
+                        x=f_dates, y=preds, name="AI Path", 
+                        line=dict(color='#FFD700', width=3, dash='dot'),
+                        mode='lines+markers', marker=dict(size=10, symbol='diamond')
+                    ))
+                    
+                    # Connecting line from current price to prediction
+                    fig.add_trace(go.Scatter(
+                        x=[df_plot.index[-1], f_dates[0]], y=[curr, preds[0]],
+                        showlegend=False, line=dict(color='#FFD700', width=2, dash='dot')
+                    ))
+
+                    fig.update_layout(
+                        template="plotly_dark", xaxis_rangeslider_visible=False, height=450, 
+                        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
+                        margin=dict(l=5, r=5, t=30, b=5),
+                        xaxis=dict(tickformat='%H:%M\n%d %b'),
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
                     st.plotly_chart(fig, use_container_width=True)
                     st.info(f"💡 **AI Logic:** Akurasi {acc:.1f}%. Data interval {horizon_label} digunakan.")
 else:
@@ -161,6 +193,7 @@ st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learni
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
