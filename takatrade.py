@@ -10,7 +10,7 @@ from streamlit_option_menu import option_menu
 from datetime import datetime, timedelta
 
 # --- 1. CONFIG & UI PREMIUM ---
-st.set_page_config(page_title="TAKATRADE PRO", layout="wide", page_icon="🏦")
+st.set_page_config(page_title="TAKATRADE PRO", layout="wide", page_icon="logo_takatrade.png")
 
 st.markdown("""
     <style>
@@ -49,7 +49,7 @@ database_aset = {
 
 # --- 3. SIDEBAR NAVIGATION ---
 with st.sidebar:
-    st.markdown('<div class="logo-container">TAKATRADE</div>', unsafe_allow_html=True)
+    st.markdown('<div class="logo-container">TAKATRADE PRO</div>', unsafe_allow_html=True)
     
     # SLOGAN TEGAS DI BAWAH LOGO
     st.markdown("""
@@ -181,6 +181,7 @@ st.caption("TAKATRADE PRO | Terminal Trading Cerdas")
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
