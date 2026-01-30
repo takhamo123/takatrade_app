@@ -54,7 +54,7 @@ with st.sidebar:
     # SLOGAN TEGAS DI BAWAH LOGO
     st.markdown("""
         <p style='text-align: center; color: #FFD700; font-family: sans-serif; font-size: 10px; letter-spacing: 2px; margin-top: -15px; margin-bottom: 20px; opacity: 0.8;'>
-        NAVIGASI TRADING CERDAS
+        TERMINAL TRADING CERDAS
         </p>
     """, unsafe_allow_html=True)
 
@@ -169,7 +169,7 @@ else:
     st.session_state.epochs = 5 if ai_speed == "Fast" else 15 if ai_speed == "Balanced" else 30
     st.session_state.modal = st.number_input("Modal Investasi ($)", value=1000)
 
-st.caption("TAKATRADE PRO | Navigasi Trading Cerdas")
+st.caption("TAKATRADE PRO | Terminal Trading Cerdas")
 
 # Instal
 # pip install streamlit yfinance pandas pandas_ta numpy scikit-learn tensorflow plotly streamlit-option-menu scipy
@@ -181,5 +181,6 @@ st.caption("TAKATRADE PRO | Navigasi Trading Cerdas")
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
