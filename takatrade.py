@@ -68,6 +68,21 @@ with st.sidebar:
     if "epochs" not in st.session_state: st.session_state.epochs = 12
     if "modal" not in st.session_state: st.session_state.modal = 1000
 
+# --- HELPER: INDICATOR ENGINE (NEW) ---
+def add_indicators(df):
+    # RSI
+    delta = df['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    df['RSI'] = 100 - (100 / (1 + rs))
+    # Bollinger Bands
+    df['MA20'] = df['Close'].rolling(window=20).mean()
+    df['STD20'] = df['Close'].rolling(window=20).std()
+    df['Upper'] = df['MA20'] + (df['STD20'] * 2)
+    df['Lower'] = df['MA20'] - (df['STD20'] * 2)
+    return df
+
 # --- 4. ENGINE AI (MEMORY OPTIMIZED) ---
 def train_ai_pro(ticker, interval, period, steps, epochs):
     K.clear_session()
@@ -78,6 +93,9 @@ def train_ai_pro(ticker, interval, period, steps, epochs):
     if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
     df = df.ffill()
     if 'Volume' not in df.columns or df['Volume'].isna().all(): df['Volume'] = 0
+    
+    # Feature Engineering (Hybrid Indicators)
+    df = add_indicators(df)
     
     scaler = MinMaxScaler()
     scaled_data = scaler.fit_transform(df[['Close', 'Volume']].values)
@@ -135,18 +153,39 @@ if selected == "Intelligence":
                     curr, target = float(df_raw['Close'].iloc[-1]), float(preds[-1])
                     pct = ((target - curr) / curr) * 100
                     
+                    # --- NEW: PROFESSIONAL LOGIC (SENTIMENT & HYBRID) ---
+                    rsi_now = df_raw['RSI'].iloc[-1]
                     vol_avg = df_raw['Volume'].rolling(10).mean().iloc[-1]
                     vol_curr = df_raw['Volume'].iloc[-1]
                     vol_chg = (vol_curr / vol_avg) if vol_avg != 0 else 1
-                    sentiment = "POSITIVE ✨" if pct > 0 and vol_chg > 1 else "NEGATIVE ⚠️" if pct < 0 else "NEUTRAL ⚖️"
-                    if pct > 1.5 and vol_chg > 1: action, color = "STRONG BUY 🟢", "#00FFCC"
-                    elif pct > 0: action, color = "BUY 🟢", "#00FFCC"
-                    elif pct < -1.5: action, color = "STRONG SELL 🔴", "#FF4B4B"
-                    else: action, color = "SELL 🔴", "#FF4B4B"
+                    
+                    # Sentiment Based on RSI & Volume
+                    if rsi_now > 70: sentiment = "OVERBOUGHT ⚠️"
+                    elif rsi_now < 30: sentiment = "OVERSOLD ✨"
+                    else: sentiment = "NEUTRAL ⚖️" if vol_chg < 1.2 else "BULLISH VOL 🔥" if pct > 0 else "BEARISH VOL 📉"
+
+                    # Action Logic with RSI Confirmation
+                    if pct > 1.0 and rsi_now < 65: action, color = "STRONG BUY 🟢", "#00FFCC"
+                    elif pct > 0 and rsi_now < 70: action, color = "BUY 🟢", "#00FFCC"
+                    elif pct < -1.0 and rsi_now > 35: action, color = "STRONG SELL 🔴", "#FF4B4B"
+                    else: action, color = "HOLD/NEUTRAL ⚖️", "#FFA500"
+                    
+                    # --- NEW: RISK MANAGEMENT CALCULATOR ---
+                    risk_per_trade = st.session_state.modal * 0.02 # Risk 2%
+                    sl_price = curr * 0.985 if action.startswith("BUY") else curr * 1.015
+                    tp_price = curr + (abs(curr - sl_price) * 2) # RR 1:2
+                    qty = risk_per_trade / abs(curr - sl_price) if abs(curr - sl_price) != 0 else 0
 
                     m1, m2 = st.columns(2); m1.metric("Price", f"{curr:,.4f}"); m2.metric(f"Target ({horizon_label})", f"{target:,.4f}", f"{pct:+.2f}%")
-                    m3, m4 = st.columns(2); m3.metric("AI Confidence", f"{acc:.1f}%"); m4.metric("Sentiment", sentiment)
-                    st.markdown(f"<div style='text-align:center; padding:10px; background:#111; border:1px solid {color}; border-radius:10px; margin-bottom:20px;'><h2 style='margin:0; color:{color};'>{action}</h2><p style='margin:0; color:gray; font-size:12px;'>TP: {curr*1.015:,.4f} | SL: {curr*0.993:,.4f}</p></div>", unsafe_allow_html=True)
+                    m3, m4 = st.columns(2); m3.metric("RSI (14)", f"{rsi_now:.1f}"); m4.metric("Market Sentiment", sentiment)
+                    
+                    st.markdown(f"""
+                        <div style='text-align:center; padding:15px; background:#111; border:1px solid {color}; border-radius:12px; margin-bottom:20px;'>
+                            <h2 style='margin:0; color:{color};'>{action}</h2>
+                            <p style='margin:5px 0; color:#FFD700; font-weight:bold;'>PRO ADVICE: Buy {qty:.2f} Units</p>
+                            <p style='margin:0; color:gray; font-size:12px;'>TP: {tp_price:,.4f} | SL: {sl_price:,.4f} | Risk: ${risk_per_trade:.2f}</p>
+                        </div>
+                    """, unsafe_allow_html=True)
                     
                     df_plot = df_raw.copy()
                     df_plot.index = pd.to_datetime(df_plot.index)
@@ -155,25 +194,27 @@ if selected == "Intelligence":
                     else:
                         df_plot.index = df_plot.index.tz_convert('Asia/Jakarta')
 
-                    # Sinkronisasi waktu sistem dan data
                     diff_time = waktu_wib.replace(tzinfo=None) - df_plot.index[-1].replace(tzinfo=None)
                     if abs(diff_time.total_seconds()) > 60:
                         df_plot.index = df_plot.index + diff_time
 
-                    # --- VISUAL CHART TAJAM ---
+                    # --- VISUAL CHART TAJAM + BOLLINGER BANDS ---
                     fig = go.Figure()
+                    # Candlestick
                     fig.add_trace(go.Candlestick(
                         x=df_plot.index[-60:], open=df_plot['Open'].iloc[-60:], 
                         high=df_plot['High'].iloc[-60:], low=df_plot['Low'].iloc[-60:], 
                         close=df_plot['Close'].iloc[-60:], name="Market",
                         increasing_line_color='#00FFCC', decreasing_line_color='#FF4B4B'
                     ))
+                    # Bollinger Bands
+                    fig.add_trace(go.Scatter(x=df_plot.index[-60:], y=df_plot['Upper'].iloc[-60:], line=dict(color='rgba(255,255,255,0.15)'), name="Upper Band"))
+                    fig.add_trace(go.Scatter(x=df_plot.index[-60:], y=df_plot['Lower'].iloc[-60:], line=dict(color='rgba(255,255,255,0.15)'), fill='tonexty', fillcolor='rgba(255,255,255,0.02)', name="Lower Band"))
                     
                     last_date = df_plot.index[-1]
                     delta_map = {"5m":5, "10m":10, "15m":15, "30m":30, "1h":60, "1d":1440, "1wk":10080, "1mo":43200}
                     f_dates = [last_date + timedelta(minutes=delta_map[horizon_label] * (i+1)) for i in range(len(preds))]
                     
-                    # AI Path Glowing
                     fig.add_trace(go.Scatter(
                         x=f_dates, y=preds, name="AI Projection", 
                         line=dict(color='#FFD700', width=4, dash='dot'),
@@ -186,19 +227,14 @@ if selected == "Intelligence":
                     ))
 
                     fig.update_layout(
-                        template="plotly_dark", 
-                        xaxis_rangeslider_visible=False, 
-                        height=500, 
-                        paper_bgcolor='black', 
-                        plot_bgcolor='black',
-                        margin=dict(l=10, r=10, t=10, b=10),
-                        font=dict(family="Arial", size=12, color="white"),
+                        template="plotly_dark", xaxis_rangeslider_visible=False, height=500, paper_bgcolor='black', plot_bgcolor='black',
+                        margin=dict(l=10, r=10, t=10, b=10), font=dict(family="Arial", size=12, color="white"),
                         xaxis=dict(showgrid=True, gridcolor='#1a1a1a', tickformat='%H:%M\n%d %b'),
                         yaxis=dict(showgrid=True, gridcolor='#1a1a1a', side="right"),
                         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                     )
                     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-                    st.info(f"💡 **AI Logic:** Akurasi {acc:.1f}%. Analisis real-time timeframe {horizon_label}.")
+                    st.info(f"💡 **AI Logic:** Akurasi {acc:.1f}%. Analisis dikonfirmasi dengan RSI & Bollinger Bands.")
 
 elif selected == "Radar":
     st.markdown("### 📡 Multi-Horizon Market Radar")
@@ -221,12 +257,13 @@ elif selected == "Radar":
                 curr_r = df_r['Close'].iloc[-1]
                 target_r = preds_r[-1]
                 pct_r = ((target_r - curr_r) / curr_r) * 100
+                rsi_r = df_r['RSI'].iloc[-1]
                 
                 if abs(pct_r) > 1.0:
-                    status = "STRONG BUY 🟢" if pct_r > 1.5 else "BUY 🟢" if pct_r > 0 else "STRONG SELL 🔴" if pct_r < -1.5 else "SELL 🔴"
+                    status = "STRONG BUY 🟢" if pct_r > 1.5 and rsi_r < 65 else "BUY 🟢" if pct_r > 0 else "STRONG SELL 🔴"
                     results.append({
-                        "Aset": ticker, "Timeframe": horizon_label, "Price": round(curr_r, 4),
-                        "AI Target": round(target_r, 4), "Potensi (%)": f"{pct_r:+.2f}%", "Signal": status
+                        "Aset": ticker, "Price": round(curr_r, 4),
+                        "Forecast %": f"{pct_r:+.2f}%", "RSI": round(rsi_r, 1), "Signal": status
                     })
         
         if results:
@@ -257,6 +294,7 @@ st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learni
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
