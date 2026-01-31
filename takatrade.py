@@ -15,8 +15,8 @@ pd.options.mode.chained_assignment = None
 # --- 1. CONFIG & UI PREMIUM ---
 st.set_page_config(page_title="TAKATRADE PRO", layout="wide", page_icon="logo_takatrade.png")
 
-# PERBAIKAN: Refresh diset ke 1200 detik (20 menit) agar proses Radar tidak terputus otomatis
-st.markdown('<meta http-equiv="refresh" content="1200">', unsafe_allow_html=True)
+# Refresh ditingkatkan ke 30 menit (1800 detik) agar proses Radar tidak terputus
+st.markdown('<meta http-equiv="refresh" content="1800">', unsafe_allow_html=True)
 
 st.markdown("""
     <style>
@@ -145,7 +145,7 @@ if selected == "Intelligence":
                     else:
                         df_plot.index = df_plot.index.tz_convert('Asia/Jakarta')
 
-                    # LOGIKA KALIBRASI
+                    # KALIBRASI WAKTU KE 06.37 WIB
                     diff_time = waktu_wib.replace(tzinfo=None) - df_plot.index[-1].replace(tzinfo=None)
                     if abs(diff_time.total_seconds()) > 60:
                         df_plot.index = df_plot.index + diff_time
@@ -180,11 +180,11 @@ if selected == "Intelligence":
                         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                     )
                     st.plotly_chart(fig, use_container_width=True)
-                    st.info(f"💡 **AI Logic:** Akurasi {acc:.1f}%. Data interval {horizon_label} digunakan.")
+                    st.info(f"💡 **AI Logic:** Akurasi {acc:.1f}%. Analisis real-time timeframe {horizon_label}.")
 
 elif selected == "Radar":
-    st.markdown("### 📡 Market Radar Scouter")
-    st.write("Memindai peluang terbaik berdasarkan algoritma Deep Learning (Interval 1 Jam)...")
+    st.markdown("### 📡 Multi-Horizon Market Radar")
+    st.write(f"Memindai peluang terbaik berdasarkan timeframe: **{horizon_label}**")
     
     col_r1, col_r2 = st.columns([1, 2])
     with col_r1:
@@ -197,19 +197,21 @@ elif selected == "Radar":
         
         for idx, ticker in enumerate(aset_list):
             progress_bar.progress((idx + 1) / len(aset_list))
-            df_r, preds_r, acc_r = train_ai_pro(ticker, "60m", "1mo", 1, 5)
+            # Scan otomatis mengikuti timeframe yang dipilih di sidebar
+            df_r, preds_r, acc_r = train_ai_pro(ticker, interval_map[horizon_label], period_map[horizon_label], 1, 5)
             
             if df_r is not None:
                 curr_r = df_r['Close'].iloc[-1]
                 target_r = preds_r[-1]
                 pct_r = ((target_r - curr_r) / curr_r) * 100
                 
-                if abs(pct_r) > 1.0:
+                if abs(pct_r) > 1.0: # Ambang batas sinyal 1%
                     status = "STRONG BUY 🟢" if pct_r > 1.5 else "BUY 🟢" if pct_r > 0 else "STRONG SELL 🔴" if pct_r < -1.5 else "SELL 🔴"
                     results.append({
                         "Aset": ticker,
+                        "Timeframe": horizon_label,
                         "Price": round(curr_r, 4),
-                        "Target": round(target_r, 4),
+                        "AI Target": round(target_r, 4),
                         "Potensi (%)": f"{pct_r:+.2f}%",
                         "Signal": status
                     })
@@ -220,9 +222,9 @@ elif selected == "Radar":
                 color = '#00FFCC' if 'BUY' in val else '#FF4B4B'
                 return f'color: {color}; font-weight: bold'
             st.dataframe(df_results.style.applymap(color_signal, subset=['Signal']), use_container_width=True)
-            st.success(f"Scanning selesai! Menemukan {len(results)} peluang.")
+            st.success(f"Scanning selesai! Menemukan {len(results)} peluang pada timeframe {horizon_label}.")
         else:
-            st.warning("Tidak ditemukan sinyal kuat saat ini.")
+            st.warning(f"Tidak ditemukan sinyal kuat pada timeframe {horizon_label} saat ini.")
 
 else:
     st.title("⚙️ Settings")
@@ -242,6 +244,7 @@ st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learni
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
