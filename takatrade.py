@@ -5,9 +5,11 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout, Input
+from tensorflow.keras import backend as K # Baris Baru: Untuk kendali RAM
 import plotly.graph_objects as go
 from streamlit_option_menu import option_menu
 from datetime import datetime, timedelta
+import gc # Baris Baru: Untuk paksa pembersihan RAM
 
 # Menghilangkan warning dekoratif pandas
 pd.options.mode.chained_assignment = None
@@ -66,8 +68,11 @@ with st.sidebar:
     if "modal" not in st.session_state: st.session_state.modal = 1000
 
 # --- 4. ENGINE AI ---
-@st.cache_resource(show_spinner=False)
 def train_ai_pro(ticker, interval, period, steps, epochs):
+    # Membersihkan Memori setiap kali fungsi dipanggil
+    K.clear_session()
+    gc.collect()
+
     df = yf.download(ticker, period=period, interval=interval, progress=False)
     if df.empty: return None, None, 0
     if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
@@ -105,11 +110,16 @@ def train_ai_pro(ticker, interval, period, steps, epochs):
         preds.append(p[0, 0])
         last_batch.append([p[0, 0], last_batch[-1][1]])
     res_preds = scaler.inverse_transform(np.column_stack([preds, [0]*steps]))[:, 0]
+    
+    # Hapus model dari memori setelah selesai digunakan
+    del model
+    K.clear_session()
+    gc.collect()
+
     return df, res_preds, accuracy
 
 # --- 5. MAIN DASHBOARD ---
 if selected == "Intelligence":
-    # Waktu Jakarta
     waktu_wib = datetime.utcnow() + timedelta(hours=7)
     st.markdown(f"### TAKATRADE Pro | {waktu_wib.strftime('%H:%M:%S')} WIB")
     c1, c2 = st.columns([1, 2])
@@ -139,7 +149,6 @@ if selected == "Intelligence":
                     m3, m4 = st.columns(2); m3.metric("AI Confidence", f"{acc:.1f}%"); m4.metric("Sentiment", sentiment)
                     st.markdown(f"<div style='text-align:center; padding:10px; background:#111; border:1px solid {color}; border-radius:10px; margin-bottom:20px;'><h2 style='margin:0; color:{color};'>{action}</h2><p style='margin:0; color:gray; font-size:12px;'>TP: {curr*1.015:,.4f} | SL: {curr*0.993:,.4f}</p></div>", unsafe_allow_html=True)
                     
-                    # --- SINKRONISASI WAKTU CHART ---
                     df_plot = df_raw.copy()
                     df_plot.index = pd.to_datetime(df_plot.index)
                     if df_plot.index.tz is None:
@@ -147,7 +156,6 @@ if selected == "Intelligence":
                     else:
                         df_plot.index = df_plot.index.tz_convert('Asia/Jakarta')
 
-                    # Kalibrasi agar candle terakhir = waktu saat ini
                     diff_time = waktu_wib.replace(tzinfo=None) - df_plot.index[-1].replace(tzinfo=None)
                     if abs(diff_time.total_seconds()) > 60:
                         df_plot.index = df_plot.index + diff_time
@@ -182,7 +190,6 @@ if selected == "Intelligence":
                         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                     )
                     st.plotly_chart(fig, use_container_width=True)
-                    st.info(f"💡 **AI Logic:** Akurasi {acc:.1f}%. Analisis real-time timeframe {horizon_label}.")
 
 elif selected == "Radar":
     st.markdown("### 📡 Market Radar Scouter")
@@ -199,7 +206,6 @@ elif selected == "Radar":
         
         for idx, ticker in enumerate(aset_list):
             progress_bar.progress((idx + 1) / len(aset_list))
-            # Scan otomatis mengikuti timeframe yang dipilih di sidebar
             df_r, preds_r, acc_r = train_ai_pro(ticker, interval_map[horizon_label], period_map[horizon_label], 1, 5)
             
             if df_r is not None:
@@ -209,13 +215,7 @@ elif selected == "Radar":
                 
                 if abs(pct_r) > 1.0:
                     status = "STRONG BUY 🟢" if pct_r > 1.5 else "BUY 🟢" if pct_r > 0 else "STRONG SELL 🔴" if pct_r < -1.5 else "SELL 🔴"
-                    results.append({
-                        "Aset": ticker,
-                        "Price": round(curr_r, 4),
-                        "Target": round(target_r, 4),
-                        "Potensi (%)": f"{pct_r:+.2f}%",
-                        "Signal": status
-                    })
+                    results.append({"Aset": ticker, "Price": round(curr_r, 4), "Target": round(target_r, 4), "Potensi (%)": f"{pct_r:+.2f}%", "Signal": status})
         
         if results:
             df_results = pd.DataFrame(results)
@@ -245,6 +245,7 @@ st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learni
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
