@@ -15,8 +15,8 @@ pd.options.mode.chained_assignment = None
 # --- 1. CONFIG & UI PREMIUM ---
 st.set_page_config(page_title="TAKATRADE PRO", layout="wide", page_icon="logo_takatrade.png")
 
-# Refresh ditingkatkan ke 30 menit (1800 detik) agar proses Radar tidak terputus
-st.markdown('<meta http-equiv="refresh" content="1800">', unsafe_allow_html=True)
+# FIX: Durasi refresh ditingkatkan agar tidak memutus proses Radar di tengah jalan
+st.markdown('<meta http-equiv="refresh" content="1200">', unsafe_allow_html=True)
 
 st.markdown("""
     <style>
@@ -109,6 +109,7 @@ def train_ai_pro(ticker, interval, period, steps, epochs):
 
 # --- 5. MAIN DASHBOARD ---
 if selected == "Intelligence":
+    # Waktu Jakarta
     waktu_wib = datetime.utcnow() + timedelta(hours=7)
     st.markdown(f"### TAKATRADE Pro | {waktu_wib.strftime('%H:%M:%S')} WIB")
     c1, c2 = st.columns([1, 2])
@@ -138,6 +139,7 @@ if selected == "Intelligence":
                     m3, m4 = st.columns(2); m3.metric("AI Confidence", f"{acc:.1f}%"); m4.metric("Sentiment", sentiment)
                     st.markdown(f"<div style='text-align:center; padding:10px; background:#111; border:1px solid {color}; border-radius:10px; margin-bottom:20px;'><h2 style='margin:0; color:{color};'>{action}</h2><p style='margin:0; color:gray; font-size:12px;'>TP: {curr*1.015:,.4f} | SL: {curr*0.993:,.4f}</p></div>", unsafe_allow_html=True)
                     
+                    # --- SINKRONISASI WAKTU CHART ---
                     df_plot = df_raw.copy()
                     df_plot.index = pd.to_datetime(df_plot.index)
                     if df_plot.index.tz is None:
@@ -145,7 +147,7 @@ if selected == "Intelligence":
                     else:
                         df_plot.index = df_plot.index.tz_convert('Asia/Jakarta')
 
-                    # KALIBRASI WAKTU KE 06.37 WIB
+                    # Kalibrasi agar candle terakhir = waktu saat ini
                     diff_time = waktu_wib.replace(tzinfo=None) - df_plot.index[-1].replace(tzinfo=None)
                     if abs(diff_time.total_seconds()) > 60:
                         df_plot.index = df_plot.index + diff_time
@@ -183,8 +185,8 @@ if selected == "Intelligence":
                     st.info(f"💡 **AI Logic:** Akurasi {acc:.1f}%. Analisis real-time timeframe {horizon_label}.")
 
 elif selected == "Radar":
-    st.markdown("### 📡 Multi-Horizon Market Radar")
-    st.write(f"Memindai peluang terbaik berdasarkan timeframe: **{horizon_label}**")
+    st.markdown("### 📡 Market Radar Scouter")
+    st.write("Memindai peluang terbaik berdasarkan algoritma Deep Learning...")
     
     col_r1, col_r2 = st.columns([1, 2])
     with col_r1:
@@ -205,13 +207,12 @@ elif selected == "Radar":
                 target_r = preds_r[-1]
                 pct_r = ((target_r - curr_r) / curr_r) * 100
                 
-                if abs(pct_r) > 1.0: # Ambang batas sinyal 1%
+                if abs(pct_r) > 1.0:
                     status = "STRONG BUY 🟢" if pct_r > 1.5 else "BUY 🟢" if pct_r > 0 else "STRONG SELL 🔴" if pct_r < -1.5 else "SELL 🔴"
                     results.append({
                         "Aset": ticker,
-                        "Timeframe": horizon_label,
                         "Price": round(curr_r, 4),
-                        "AI Target": round(target_r, 4),
+                        "Target": round(target_r, 4),
                         "Potensi (%)": f"{pct_r:+.2f}%",
                         "Signal": status
                     })
@@ -222,9 +223,9 @@ elif selected == "Radar":
                 color = '#00FFCC' if 'BUY' in val else '#FF4B4B'
                 return f'color: {color}; font-weight: bold'
             st.dataframe(df_results.style.applymap(color_signal, subset=['Signal']), use_container_width=True)
-            st.success(f"Scanning selesai! Menemukan {len(results)} peluang pada timeframe {horizon_label}.")
+            st.success(f"Scanning selesai! Menemukan {len(results)} peluang.")
         else:
-            st.warning(f"Tidak ditemukan sinyal kuat pada timeframe {horizon_label} saat ini.")
+            st.warning("Tidak ditemukan sinyal kuat.")
 
 else:
     st.title("⚙️ Settings")
@@ -244,6 +245,7 @@ st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learni
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
