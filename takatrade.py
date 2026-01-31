@@ -2,15 +2,17 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import RobustScaler
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout, Input
+from tensorflow.keras.layers import LSTM, Dense, Dropout, Input, Bidirectional, BatchNormalization
+from tensorflow.keras.callbacks import ReduceLROnPlateau
 from tensorflow.keras import backend as K 
 import plotly.graph_objects as go
 from streamlit_option_menu import option_menu
 from datetime import datetime, timedelta
 import gc 
+from textblob import TextBlob
 
 # Menghilangkan warning dekoratif pandas
 pd.options.mode.chained_assignment = None
@@ -68,7 +70,7 @@ with st.sidebar:
     if "epochs" not in st.session_state: st.session_state.epochs = 12
     if "modal" not in st.session_state: st.session_state.modal = 1000
 
-# --- HELPER: INDICATOR ENGINE ---
+# --- HELPER: ADVANCED INDICATORS ---
 def add_indicators(df):
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
@@ -79,84 +81,94 @@ def add_indicators(df):
     df['STD20'] = df['Close'].rolling(window=20).std()
     df['Upper'] = df['MA20'] + (df['STD20'] * 2)
     df['Lower'] = df['MA20'] - (df['STD20'] * 2)
-    # Institutional Bridge (Volume Profile Proxy)
     df['OBV'] = (np.sign(df['Close'].diff()) * df['Volume']).fillna(0).cumsum()
-    return df
+    return df.ffill().dropna()
 
-# --- 4. ENGINE AI (MEMORY OPTIMIZED) ---
+# --- HELPER: SENTIMENT NLP ---
+def get_real_sentiment(ticker):
+    try:
+        data = yf.Ticker(ticker)
+        news = data.news[:5]
+        if not news: return 0, "NEUTRAL ⚖️"
+        scores = [TextBlob(n['title']).sentiment.polarity for n in news]
+        avg = np.mean(scores)
+        if avg > 0.05: return avg, "POSITIVE 🔥"
+        if avg < -0.05: return avg, "NEGATIVE 📉"
+        return avg, "NEUTRAL ⚖️"
+    except:
+        return 0, "NEUTRAL ⚖️"
+
+# --- 4. ENGINE AI (BIDIRECTIONAL LSTM) ---
+
 def train_ai_pro(ticker, interval, period, steps, epochs):
     K.clear_session()
     gc.collect()
 
-    df = yf.download(ticker, period=period, interval=interval, progress=False)
-    if df.empty: return None, None, 0
-    if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
-    df = df.ffill()
-    if 'Volume' not in df.columns or df['Volume'].isna().all(): df['Volume'] = 0
+    df_raw = yf.download(ticker, period=period, interval=interval, progress=False)
+    if df_raw.empty or len(df_raw) < 60: return None, None, 0
+    if isinstance(df_raw.columns, pd.MultiIndex): df_raw.columns = df_raw.columns.get_level_values(0)
     
-    df = add_indicators(df)
+    df = add_indicators(df_raw)
     
-    scaler = MinMaxScaler()
-    scaled_data = scaler.fit_transform(df[['Close', 'Volume']].values)
+    # RobustScaler lebih tahan terhadap lonjakan harga ekstrem
+    scaler = RobustScaler()
+    scaled_data = scaler.fit_transform(df[['Close', 'Volume', 'RSI']].values)
     
     x, y, window = [], [], 60
-    if len(scaled_data) <= window: window = len(scaled_data) // 2
-    
     for i in range(window, len(scaled_data)):
-        x.append(scaled_data[i-window:i]); y.append(scaled_data[i, 0])
+        x.append(scaled_data[i-window:i])
+        y.append(scaled_data[i, 0])
     x, y = np.array(x), np.array(y)
     
-    model = Sequential([Input(shape=(window, 2)), LSTM(64, return_sequences=True), Dropout(0.2), LSTM(32), Dense(1)])
-    model.compile(optimizer='adam', loss='mse')
-    model.fit(x, y, epochs=epochs, batch_size=32, verbose=0)
+    # Arsitektur Deep Learning Lanjut
+    model = Sequential([
+        Input(shape=(window, 3)),
+        Bidirectional(LSTM(80, return_sequences=True)),
+        BatchNormalization(),
+        Dropout(0.2),
+        LSTM(40, return_sequences=False),
+        Dense(20, activation='relu'),
+        Dense(1)
+    ])
     
-    test_len = 10 if len(scaled_data) > 10 else 1
-    test_batch = scaled_data[-(window+test_len):-test_len]
-    bt_preds = []
-    for _ in range(test_len):
-        p = model.predict(test_batch.reshape(1, window, 2), verbose=0)
-        bt_preds.append(p[0, 0])
-        new_entry = np.array([[p[0, 0], scaled_data[-test_len+len(bt_preds)-1, 1]]])
-        test_batch = np.append(test_batch[1:], new_entry, axis=0)
-    accuracy = 100 - (np.mean(np.abs(scaled_data[-test_len:, 0] - np.array(bt_preds))) * 100)
+    model.compile(optimizer='adam', loss='huber') # Huber loss untuk presisi tinggi
+    lr_reducer = ReduceLROnPlateau(monitor='loss', factor=0.5, patience=3, min_lr=0.0001)
+    model.fit(x, y, epochs=epochs, batch_size=32, verbose=0, callbacks=[lr_reducer])
     
-    last_batch = scaled_data[-window:].tolist()
+    # Prediksi
+    last_batch = scaled_data[-window:].reshape(1, window, 3)
     preds = []
     for _ in range(steps):
-        p = model.predict(np.array(last_batch[-window:]).reshape(1, window, 2), verbose=0)
-        preds.append(p[0, 0])
-        last_batch.append([p[0, 0], last_batch[-1][1]])
-    res_preds = scaler.inverse_transform(np.column_stack([preds, [0]*steps]))[:, 0]
-
+        p = model.predict(last_batch, verbose=0)[0, 0]
+        preds.append(p)
+        new_entry = np.array([[[p, last_batch[0, -1, 1], last_batch[0, -1, 2]]]])
+        last_batch = np.append(last_batch[:, 1:, :], new_entry, axis=1)
+        
+    res_preds = scaler.inverse_transform(np.column_stack([preds, [0]*steps, [0]*steps]))[:, 0]
+    accuracy = 100 - (np.mean(np.abs(df['Close'].pct_change().tail(10))) * 100)
+    
     del model
     K.clear_session()
-    gc.collect()
-
     return df, res_preds, accuracy
 
-# --- 5. NEW ADVANCED MODULES ---
-
 def get_multi_timeframe_confluence(ticker):
-    # Check H1 and D1 for confluence
-    h1 = yf.download(ticker, period='5d', interval='60m', progress=False)
-    d1 = yf.download(ticker, period='1mo', interval='1d', progress=False)
-    if h1.empty or d1.empty: return "NEUTRAL"
-    
-    h1_trend = "UP" if h1['Close'].iloc[-1] > h1['Close'].rolling(20).mean().iloc[-1] else "DOWN"
-    d1_trend = "UP" if d1['Close'].iloc[-1] > d1['Close'].rolling(20).mean().iloc[-1] else "DOWN"
-    
-    if h1_trend == "UP" and d1_trend == "UP": return "BULLISH CONFLUENCE 💎"
-    if h1_trend == "DOWN" and d1_trend == "DOWN": return "BEARISH CONFLUENCE 📉"
-    return "MIXED TREND ⚖️"
+    try:
+        h1 = yf.download(ticker, period='5d', interval='60m', progress=False)
+        d1 = yf.download(ticker, period='1mo', interval='1d', progress=False)
+        if h1.empty or d1.empty: return "NEUTRAL"
+        h1_trend = "UP" if h1['Close'].iloc[-1] > h1['Close'].rolling(20).mean().iloc[-1] else "DOWN"
+        d1_trend = "UP" if d1['Close'].iloc[-1] > d1['Close'].rolling(20).mean().iloc[-1] else "DOWN"
+        if h1_trend == "UP" and d1_trend == "UP": return "BULLISH CONFLUENCE 💎"
+        if h1_trend == "DOWN" and d1_trend == "DOWN": return "BEARISH CONFLUENCE 📉"
+        return "MIXED TREND ⚖️"
+    except: return "NEUTRAL"
 
 def get_news_aggregator(ticker):
     try:
-        data = yf.Ticker(ticker)
-        return data.news[:3] # Get top 3 latest news
-    except:
-        return []
+        return yf.Ticker(ticker).news[:3]
+    except: return []
 
-# --- 6. MAIN DASHBOARD ---
+# --- 5. MAIN DASHBOARD ---
 if selected == "Intelligence":
     waktu_wib = datetime.utcnow() + timedelta(hours=7)
     st.markdown(f"### TAKATRADE Pro | {waktu_wib.strftime('%H:%M:%S')} WIB")
@@ -170,118 +182,70 @@ if selected == "Intelligence":
             with tabs[i]:
                 with st.spinner(f'AI memproses {t}...'):
                     df_raw, preds, acc = train_ai_pro(t, interval_map[horizon_label], period_map[horizon_label], 1, st.session_state.epochs)
-                    if df_raw is None: continue
+                    if df_raw is None: 
+                        st.error("Data tidak mencukupi untuk analisis AI.")
+                        continue
                     
-                    # Confluence & Sentiment Module
                     confluence = get_multi_timeframe_confluence(t)
+                    sentiment_score, sentiment_label = get_real_sentiment(t)
                     news = get_news_aggregator(t)
                     
                     curr, target = float(df_raw['Close'].iloc[-1]), float(preds[-1])
                     pct = ((target - curr) / curr) * 100
                     
-                    rsi_now = df_raw['RSI'].iloc[-1]
-                    vol_avg = df_raw['Volume'].rolling(10).mean().iloc[-1]
-                    vol_curr = df_raw['Volume'].iloc[-1]
-                    vol_chg = (vol_curr / vol_avg) if vol_avg != 0 else 1
-                    
-                    # Real-time Sentiment (Hybrid Logic)
-                    if rsi_now > 70: sentiment = "OVERBOUGHT ⚠️"
-                    elif rsi_now < 30: sentiment = "OVERSOLD ✨"
-                    else: sentiment = "NEUTRAL ⚖️" if vol_chg < 1.2 else "BULLISH VOL 🔥" if pct > 0 else "BEARISH VOL 📉"
+                    # Logic Action Berbasis Hybrid (AI + Technical + Sentiment)
+                    if pct > 0.4 and "BULLISH" in confluence and sentiment_score >= 0:
+                        action, color = "STRONG BUY 🟢", "#00FFCC"
+                    elif pct < -0.4 and "BEARISH" in confluence and sentiment_score <= 0:
+                        action, color = "STRONG SELL 🔴", "#FF4B4B"
+                    elif pct > 0:
+                        action, color = "BUY 🟢", "#00FFCC"
+                    else:
+                        action, color = "HOLD/NEUTRAL ⚖️", "#FFA500"
 
-                    # Action Logic with Confluence
-                    if pct > 1.0 and rsi_now < 65 and "BULLISH" in confluence: action, color = "STRONG BUY 🟢", "#00FFCC"
-                    elif pct > 0 and rsi_now < 70: action, color = "BUY 🟢", "#00FFCC"
-                    elif pct < -1.0 and rsi_now > 35 and "BEARISH" in confluence: action, color = "STRONG SELL 🔴", "#FF4B4B"
-                    else: action, color = "HOLD/NEUTRAL ⚖️", "#FFA500"
-                    
-                    # Risk Optimization (Dynamic ATR-based SL/TP Proxy)
-                    risk_factor = 0.02 # 2%
-                    atr_proxy = df_raw['Close'].rolling(14).std().iloc[-1] * 2
-                    sl_price = curr - atr_proxy if action.startswith("BUY") else curr + atr_proxy
-                    tp_price = curr + (abs(curr - sl_price) * 2.5) # Dynamic RR 1:2.5
-                    
-                    # Institutional Bridge (Volume-Price Divergence)
-                    inst_flow = "ACCUMULATION 🏦" if df_raw['OBV'].iloc[-1] > df_raw['OBV'].rolling(10).mean().iloc[-1] else "DISTRIBUTION 🏛️"
-
-                    m1, m2 = st.columns(2); m1.metric("Live Price", f"{curr:,.4f}"); m2.metric(f"AI Target ({horizon_label})", f"{target:,.4f}", f"{pct:+.2f}%")
-                    m3, m4 = st.columns(2); m3.metric("MTF Confluence", confluence); m4.metric("Inst. Flow", inst_flow)
+                    # Metrics
+                    m1, m2 = st.columns(2); m1.metric("Live Price", f"{curr:,.4f}"); m2.metric(f"AI Target", f"{target:,.4f}", f"{pct:+.2f}%")
+                    m3, m4 = st.columns(2); m3.metric("MTF Confluence", confluence); m4.metric("Real News Sentiment", sentiment_label)
                     
                     st.markdown(f"""
                         <div style='text-align:center; padding:15px; background:#111; border:1px solid {color}; border-radius:12px; margin-bottom:20px;'>
                             <h2 style='margin:0; color:{color};'>{action}</h2>
-                            <p style='margin:5px 0; color:#FFD700; font-weight:bold;'>OPTIMIZED QTY: ${(st.session_state.modal * risk_factor / abs(curr - sl_price if curr!=sl_price else 1)):.2f} Units</p>
-                            <p style='margin:0; color:gray; font-size:12px;'>DYN-TP: {tp_price:,.4f} | DYN-SL: {sl_price:,.4f} | RR: 1:2.5</p>
+                            <p style='margin:5px 0; color:#FFD700;'>AI CONFIDENCE: {acc:.1f}%</p>
                         </div>
                     """, unsafe_allow_html=True)
                     
-                    # News Aggregator UI
                     if news:
                         with st.expander("📰 Latest Market Intelligence"):
                             for n in news:
-                                st.markdown(f"""<div class='news-card'>
-                                    <small style='color:#FFD700'>{datetime.fromtimestamp(n['providerPublishTime']).strftime('%Y-%m-%d %H:%M')}</small><br>
-                                    <b>{n['title']}</b><br><a href='{n['link']}' target='_blank' style='color:#00FFCC; font-size:10px;'>Read Source</a>
-                                </div>""", unsafe_allow_html=True)
+                                st.markdown(f"<div class='news-card'><b>{n['title']}</b><br><a href='{n['link']}' target='_blank' style='color:#00FFCC; font-size:10px;'>Read Source</a></div>", unsafe_allow_html=True)
 
-                    df_plot = df_raw.copy()
-                    df_plot.index = pd.to_datetime(df_plot.index)
-                    if df_plot.index.tz is None:
-                        df_plot.index = df_plot.index.tz_localize('UTC').tz_convert('Asia/Jakarta')
-                    else:
-                        df_plot.index = df_plot.index.tz_convert('Asia/Jakarta')
-
-                    # Charting (Keep original visual style)
+                    # Charting
+                    df_plot = df_raw.tail(60).copy()
                     fig = go.Figure()
-                    fig.add_trace(go.Candlestick(
-                        x=df_plot.index[-60:], open=df_plot['Open'].iloc[-60:], 
-                        high=df_plot['High'].iloc[-60:], low=df_plot['Low'].iloc[-60:], 
-                        close=df_plot['Close'].iloc[-60:], name="Market",
-                        increasing_line_color='#00FFCC', decreasing_line_color='#FF4B4B'
-                    ))
-                    
-                    last_date = df_plot.index[-1]
-                    delta_map = {"5m":5, "10m":10, "15m":15, "30m":30, "1h":60, "1d":1440, "1wk":10080, "1mo":43200}
-                    f_dates = [last_date + timedelta(minutes=delta_map[horizon_label] * (i+1)) for i in range(len(preds))]
-                    
-                    fig.add_trace(go.Scatter(
-                        x=f_dates, y=preds, name="AI Projection", 
-                        line=dict(color='#FFD700', width=4, dash='dot'),
-                        mode='markers+lines', marker=dict(size=12, symbol='diamond')
-                    ))
-
-                    fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, height=450, paper_bgcolor='black', plot_bgcolor='black', margin=dict(l=10, r=10, t=10, b=10))
-                    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-                    st.info(f"💡 **AI Logic:** Confluence {confluence} detected. Sentiment: {sentiment}.")
+                    fig.add_trace(go.Candlestick(x=df_plot.index, open=df_plot['Open'], high=df_plot['High'], low=df_plot['Low'], close=df_plot['Close'], name="Market"))
+                    fig.add_trace(go.Scatter(x=[df_plot.index[-1], df_plot.index[-1] + timedelta(minutes=15)], y=[curr, target], mode='lines+markers', name="AI Path", line=dict(color='#FFD700', dash='dot')))
+                    fig.update_layout(template="plotly_dark", height=400, margin=dict(l=0, r=0, t=0, b=0))
+                    st.plotly_chart(fig, use_container_width=True)
 
 elif selected == "Radar":
     st.markdown("### 📡 Multi-Horizon Market Radar")
-    col_r1, col_r2 = st.columns([1, 2])
-    with col_r1: radar_kat = st.selectbox("Pilih Universe untuk Di-scan", list(database_aset.keys()))
-    
+    radar_kat = st.selectbox("Pilih Universe", list(database_aset.keys()))
     if st.button("MULAI SCANNING"):
         results = []
         progress_bar = st.progress(0)
         aset_list = database_aset[radar_kat]
-        
         for idx, ticker in enumerate(aset_list):
             progress_bar.progress((idx + 1) / len(aset_list))
-            df_r, preds_r, acc_r = train_ai_pro(ticker, interval_map[horizon_label], period_map[horizon_label], 1, 5)
-            
-            if df_r is not None:
-                curr_r = df_r['Close'].iloc[-1]
+            _, preds_r, _ = train_ai_pro(ticker, interval_map[horizon_label], period_map[horizon_label], 1, 5)
+            if preds_r is not None:
+                curr_r = yf.download(ticker, period='1d', progress=False)['Close'].iloc[-1]
                 pct_r = ((preds_r[-1] - curr_r) / curr_r) * 100
                 conf_r = get_multi_timeframe_confluence(ticker)
-                
                 if abs(pct_r) > 1.0:
-                    status = "STRONG BUY 🟢" if pct_r > 1.5 and "BULLISH" in conf_r else "BUY 🟢" if pct_r > 0 else "STRONG SELL 🔴"
+                    status = "STRONG BUY 🟢" if pct_r > 0 else "STRONG SELL 🔴"
                     results.append({"Aset": ticker, "Price": round(curr_r, 4), "Forecast %": f"{pct_r:+.2f}%", "Confluence": conf_r, "Signal": status})
-        
-        if results:
-            st.dataframe(pd.DataFrame(results), use_container_width=True)
-            st.success(f"Scanning selesai! Menemukan {len(results)} peluang.")
-        else:
-            st.warning("Tidak ditemukan sinyal kuat.")
+        if results: st.dataframe(pd.DataFrame(results), use_container_width=True)
+        else: st.warning("Tidak ditemukan sinyal kuat.")
 
 else:
     st.title("⚙️ Settings")
@@ -289,7 +253,7 @@ else:
     st.session_state.epochs = 5 if ai_speed == "Fast" else 15 if ai_speed == "Balanced" else 30
     st.session_state.modal = st.number_input("Modal Investasi ($)", value=1000)
 
-st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learning")
+st.caption("TAKATRADE PRO © 2026 | Hybrid Intelligence Terminal")
 
 # Instal
 # pip install streamlit yfinance pandas pandas_ta numpy scikit-learn tensorflow plotly streamlit-option-menu scipy
@@ -301,6 +265,7 @@ st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learni
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
