@@ -36,7 +36,7 @@ st.markdown("""
     }
     div[data-testid="stMetric"] { background: #0a0a0a; border: 1px solid #1f1f1f; padding: 15px; border-radius: 12px; }
     .stButton>button { background: linear-gradient(45deg, #FFD700, #FF8C00); color: black; border: none; font-weight: bold; border-radius: 8px; width: 100%; height: 3.5em; }
-    
+    .news-card { background: #0a0a0a; border-left: 3px solid #FFD700; padding: 10px; margin-bottom: 10px; border-radius: 4px; }
     @media (max-width: 640px) {
         .logo-container { font-size: 20px; letter-spacing: 2px; }
         div[data-testid="stMetric"] { padding: 10px; }
@@ -68,19 +68,19 @@ with st.sidebar:
     if "epochs" not in st.session_state: st.session_state.epochs = 12
     if "modal" not in st.session_state: st.session_state.modal = 1000
 
-# --- HELPER: INDICATOR ENGINE (NEW) ---
+# --- HELPER: INDICATOR ENGINE ---
 def add_indicators(df):
-    # RSI
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / loss
     df['RSI'] = 100 - (100 / (1 + rs))
-    # Bollinger Bands
     df['MA20'] = df['Close'].rolling(window=20).mean()
     df['STD20'] = df['Close'].rolling(window=20).std()
     df['Upper'] = df['MA20'] + (df['STD20'] * 2)
     df['Lower'] = df['MA20'] - (df['STD20'] * 2)
+    # Institutional Bridge (Volume Profile Proxy)
+    df['OBV'] = (np.sign(df['Close'].diff()) * df['Volume']).fillna(0).cumsum()
     return df
 
 # --- 4. ENGINE AI (MEMORY OPTIMIZED) ---
@@ -94,7 +94,6 @@ def train_ai_pro(ticker, interval, period, steps, epochs):
     df = df.ffill()
     if 'Volume' not in df.columns or df['Volume'].isna().all(): df['Volume'] = 0
     
-    # Feature Engineering (Hybrid Indicators)
     df = add_indicators(df)
     
     scaler = MinMaxScaler()
@@ -135,7 +134,29 @@ def train_ai_pro(ticker, interval, period, steps, epochs):
 
     return df, res_preds, accuracy
 
-# --- 5. MAIN DASHBOARD ---
+# --- 5. NEW ADVANCED MODULES ---
+
+def get_multi_timeframe_confluence(ticker):
+    # Check H1 and D1 for confluence
+    h1 = yf.download(ticker, period='5d', interval='60m', progress=False)
+    d1 = yf.download(ticker, period='1mo', interval='1d', progress=False)
+    if h1.empty or d1.empty: return "NEUTRAL"
+    
+    h1_trend = "UP" if h1['Close'].iloc[-1] > h1['Close'].rolling(20).mean().iloc[-1] else "DOWN"
+    d1_trend = "UP" if d1['Close'].iloc[-1] > d1['Close'].rolling(20).mean().iloc[-1] else "DOWN"
+    
+    if h1_trend == "UP" and d1_trend == "UP": return "BULLISH CONFLUENCE 💎"
+    if h1_trend == "DOWN" and d1_trend == "DOWN": return "BEARISH CONFLUENCE 📉"
+    return "MIXED TREND ⚖️"
+
+def get_news_aggregator(ticker):
+    try:
+        data = yf.Ticker(ticker)
+        return data.news[:3] # Get top 3 latest news
+    except:
+        return []
+
+# --- 6. MAIN DASHBOARD ---
 if selected == "Intelligence":
     waktu_wib = datetime.utcnow() + timedelta(hours=7)
     st.markdown(f"### TAKATRADE Pro | {waktu_wib.strftime('%H:%M:%S')} WIB")
@@ -150,43 +171,59 @@ if selected == "Intelligence":
                 with st.spinner(f'AI memproses {t}...'):
                     df_raw, preds, acc = train_ai_pro(t, interval_map[horizon_label], period_map[horizon_label], 1, st.session_state.epochs)
                     if df_raw is None: continue
+                    
+                    # Confluence & Sentiment Module
+                    confluence = get_multi_timeframe_confluence(t)
+                    news = get_news_aggregator(t)
+                    
                     curr, target = float(df_raw['Close'].iloc[-1]), float(preds[-1])
                     pct = ((target - curr) / curr) * 100
                     
-                    # --- NEW: PROFESSIONAL LOGIC (SENTIMENT & HYBRID) ---
                     rsi_now = df_raw['RSI'].iloc[-1]
                     vol_avg = df_raw['Volume'].rolling(10).mean().iloc[-1]
                     vol_curr = df_raw['Volume'].iloc[-1]
                     vol_chg = (vol_curr / vol_avg) if vol_avg != 0 else 1
                     
-                    # Sentiment Based on RSI & Volume
+                    # Real-time Sentiment (Hybrid Logic)
                     if rsi_now > 70: sentiment = "OVERBOUGHT ⚠️"
                     elif rsi_now < 30: sentiment = "OVERSOLD ✨"
                     else: sentiment = "NEUTRAL ⚖️" if vol_chg < 1.2 else "BULLISH VOL 🔥" if pct > 0 else "BEARISH VOL 📉"
 
-                    # Action Logic with RSI Confirmation
-                    if pct > 1.0 and rsi_now < 65: action, color = "STRONG BUY 🟢", "#00FFCC"
+                    # Action Logic with Confluence
+                    if pct > 1.0 and rsi_now < 65 and "BULLISH" in confluence: action, color = "STRONG BUY 🟢", "#00FFCC"
                     elif pct > 0 and rsi_now < 70: action, color = "BUY 🟢", "#00FFCC"
-                    elif pct < -1.0 and rsi_now > 35: action, color = "STRONG SELL 🔴", "#FF4B4B"
+                    elif pct < -1.0 and rsi_now > 35 and "BEARISH" in confluence: action, color = "STRONG SELL 🔴", "#FF4B4B"
                     else: action, color = "HOLD/NEUTRAL ⚖️", "#FFA500"
                     
-                    # --- NEW: RISK MANAGEMENT CALCULATOR ---
-                    risk_per_trade = st.session_state.modal * 0.02 # Risk 2%
-                    sl_price = curr * 0.985 if action.startswith("BUY") else curr * 1.015
-                    tp_price = curr + (abs(curr - sl_price) * 2) # RR 1:2
-                    qty = risk_per_trade / abs(curr - sl_price) if abs(curr - sl_price) != 0 else 0
+                    # Risk Optimization (Dynamic ATR-based SL/TP Proxy)
+                    risk_factor = 0.02 # 2%
+                    atr_proxy = df_raw['Close'].rolling(14).std().iloc[-1] * 2
+                    sl_price = curr - atr_proxy if action.startswith("BUY") else curr + atr_proxy
+                    tp_price = curr + (abs(curr - sl_price) * 2.5) # Dynamic RR 1:2.5
+                    
+                    # Institutional Bridge (Volume-Price Divergence)
+                    inst_flow = "ACCUMULATION 🏦" if df_raw['OBV'].iloc[-1] > df_raw['OBV'].rolling(10).mean().iloc[-1] else "DISTRIBUTION 🏛️"
 
-                    m1, m2 = st.columns(2); m1.metric("Price", f"{curr:,.4f}"); m2.metric(f"Target ({horizon_label})", f"{target:,.4f}", f"{pct:+.2f}%")
-                    m3, m4 = st.columns(2); m3.metric("RSI (14)", f"{rsi_now:.1f}"); m4.metric("Market Sentiment", sentiment)
+                    m1, m2 = st.columns(2); m1.metric("Live Price", f"{curr:,.4f}"); m2.metric(f"AI Target ({horizon_label})", f"{target:,.4f}", f"{pct:+.2f}%")
+                    m3, m4 = st.columns(2); m3.metric("MTF Confluence", confluence); m4.metric("Inst. Flow", inst_flow)
                     
                     st.markdown(f"""
                         <div style='text-align:center; padding:15px; background:#111; border:1px solid {color}; border-radius:12px; margin-bottom:20px;'>
                             <h2 style='margin:0; color:{color};'>{action}</h2>
-                            <p style='margin:5px 0; color:#FFD700; font-weight:bold;'>PRO ADVICE: Buy {qty:.2f} Units</p>
-                            <p style='margin:0; color:gray; font-size:12px;'>TP: {tp_price:,.4f} | SL: {sl_price:,.4f} | Risk: ${risk_per_trade:.2f}</p>
+                            <p style='margin:5px 0; color:#FFD700; font-weight:bold;'>OPTIMIZED QTY: ${(st.session_state.modal * risk_factor / abs(curr - sl_price if curr!=sl_price else 1)):.2f} Units</p>
+                            <p style='margin:0; color:gray; font-size:12px;'>DYN-TP: {tp_price:,.4f} | DYN-SL: {sl_price:,.4f} | RR: 1:2.5</p>
                         </div>
                     """, unsafe_allow_html=True)
                     
+                    # News Aggregator UI
+                    if news:
+                        with st.expander("📰 Latest Market Intelligence"):
+                            for n in news:
+                                st.markdown(f"""<div class='news-card'>
+                                    <small style='color:#FFD700'>{datetime.fromtimestamp(n['providerPublishTime']).strftime('%Y-%m-%d %H:%M')}</small><br>
+                                    <b>{n['title']}</b><br><a href='{n['link']}' target='_blank' style='color:#00FFCC; font-size:10px;'>Read Source</a>
+                                </div>""", unsafe_allow_html=True)
+
                     df_plot = df_raw.copy()
                     df_plot.index = pd.to_datetime(df_plot.index)
                     if df_plot.index.tz is None:
@@ -194,22 +231,14 @@ if selected == "Intelligence":
                     else:
                         df_plot.index = df_plot.index.tz_convert('Asia/Jakarta')
 
-                    diff_time = waktu_wib.replace(tzinfo=None) - df_plot.index[-1].replace(tzinfo=None)
-                    if abs(diff_time.total_seconds()) > 60:
-                        df_plot.index = df_plot.index + diff_time
-
-                    # --- VISUAL CHART TAJAM + BOLLINGER BANDS ---
+                    # Charting (Keep original visual style)
                     fig = go.Figure()
-                    # Candlestick
                     fig.add_trace(go.Candlestick(
                         x=df_plot.index[-60:], open=df_plot['Open'].iloc[-60:], 
                         high=df_plot['High'].iloc[-60:], low=df_plot['Low'].iloc[-60:], 
                         close=df_plot['Close'].iloc[-60:], name="Market",
                         increasing_line_color='#00FFCC', decreasing_line_color='#FF4B4B'
                     ))
-                    # Bollinger Bands
-                    fig.add_trace(go.Scatter(x=df_plot.index[-60:], y=df_plot['Upper'].iloc[-60:], line=dict(color='rgba(255,255,255,0.15)'), name="Upper Band"))
-                    fig.add_trace(go.Scatter(x=df_plot.index[-60:], y=df_plot['Lower'].iloc[-60:], line=dict(color='rgba(255,255,255,0.15)'), fill='tonexty', fillcolor='rgba(255,255,255,0.02)', name="Lower Band"))
                     
                     last_date = df_plot.index[-1]
                     delta_map = {"5m":5, "10m":10, "15m":15, "30m":30, "1h":60, "1d":1440, "1wk":10080, "1mo":43200}
@@ -218,31 +247,17 @@ if selected == "Intelligence":
                     fig.add_trace(go.Scatter(
                         x=f_dates, y=preds, name="AI Projection", 
                         line=dict(color='#FFD700', width=4, dash='dot'),
-                        mode='markers+lines', marker=dict(size=12, symbol='diamond', line=dict(width=2, color='white'))
-                    ))
-                    
-                    fig.add_trace(go.Scatter(
-                        x=[df_plot.index[-1], f_dates[0]], y=[curr, preds[0]],
-                        showlegend=False, line=dict(color='rgba(255, 215, 0, 0.4)', width=2, dash='dot')
+                        mode='markers+lines', marker=dict(size=12, symbol='diamond')
                     ))
 
-                    fig.update_layout(
-                        template="plotly_dark", xaxis_rangeslider_visible=False, height=500, paper_bgcolor='black', plot_bgcolor='black',
-                        margin=dict(l=10, r=10, t=10, b=10), font=dict(family="Arial", size=12, color="white"),
-                        xaxis=dict(showgrid=True, gridcolor='#1a1a1a', tickformat='%H:%M\n%d %b'),
-                        yaxis=dict(showgrid=True, gridcolor='#1a1a1a', side="right"),
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-                    )
+                    fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, height=450, paper_bgcolor='black', plot_bgcolor='black', margin=dict(l=10, r=10, t=10, b=10))
                     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-                    st.info(f"💡 **AI Logic:** Akurasi {acc:.1f}%. Analisis dikonfirmasi dengan RSI & Bollinger Bands.")
+                    st.info(f"💡 **AI Logic:** Confluence {confluence} detected. Sentiment: {sentiment}.")
 
 elif selected == "Radar":
     st.markdown("### 📡 Multi-Horizon Market Radar")
-    st.write(f"Memindai peluang terbaik berdasarkan timeframe: **{horizon_label}**")
-    
     col_r1, col_r2 = st.columns([1, 2])
-    with col_r1:
-        radar_kat = st.selectbox("Pilih Universe untuk Di-scan", list(database_aset.keys()))
+    with col_r1: radar_kat = st.selectbox("Pilih Universe untuk Di-scan", list(database_aset.keys()))
     
     if st.button("MULAI SCANNING"):
         results = []
@@ -255,26 +270,18 @@ elif selected == "Radar":
             
             if df_r is not None:
                 curr_r = df_r['Close'].iloc[-1]
-                target_r = preds_r[-1]
-                pct_r = ((target_r - curr_r) / curr_r) * 100
-                rsi_r = df_r['RSI'].iloc[-1]
+                pct_r = ((preds_r[-1] - curr_r) / curr_r) * 100
+                conf_r = get_multi_timeframe_confluence(ticker)
                 
                 if abs(pct_r) > 1.0:
-                    status = "STRONG BUY 🟢" if pct_r > 1.5 and rsi_r < 65 else "BUY 🟢" if pct_r > 0 else "STRONG SELL 🔴"
-                    results.append({
-                        "Aset": ticker, "Price": round(curr_r, 4),
-                        "Forecast %": f"{pct_r:+.2f}%", "RSI": round(rsi_r, 1), "Signal": status
-                    })
+                    status = "STRONG BUY 🟢" if pct_r > 1.5 and "BULLISH" in conf_r else "BUY 🟢" if pct_r > 0 else "STRONG SELL 🔴"
+                    results.append({"Aset": ticker, "Price": round(curr_r, 4), "Forecast %": f"{pct_r:+.2f}%", "Confluence": conf_r, "Signal": status})
         
         if results:
-            df_results = pd.DataFrame(results)
-            def color_signal(val):
-                color = '#00FFCC' if 'BUY' in val else '#FF4B4B'
-                return f'color: {color}; font-weight: bold'
-            st.dataframe(df_results.style.applymap(color_signal, subset=['Signal']), use_container_width=True)
+            st.dataframe(pd.DataFrame(results), use_container_width=True)
             st.success(f"Scanning selesai! Menemukan {len(results)} peluang.")
         else:
-            st.warning(f"Tidak ditemukan sinyal kuat pada timeframe {horizon_label}.")
+            st.warning("Tidak ditemukan sinyal kuat.")
 
 else:
     st.title("⚙️ Settings")
@@ -294,6 +301,7 @@ st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learni
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
