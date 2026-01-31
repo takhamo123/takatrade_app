@@ -1,0 +1,17 @@
+# Python bytecode (file sampah eksekusi)
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Lingkungan Virtual (Virtual Environments)
+venv/
+env/
+.env
+
+# File sistem & IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Streamlit temporary files
+.streamlit/
