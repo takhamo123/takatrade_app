@@ -15,7 +15,7 @@ import gc
 # Menghilangkan warning dekoratif pandas
 pd.options.mode.chained_assignment = None
 
-# --- 1. CONFIG & UI PREMIUM (IDENTIK 100% DENGAN KODE LAMA) ---
+# --- 1. CONFIG & UI PREMIUM (IDENTIK 100%) ---
 st.set_page_config(page_title="TAKATRADE PRO", layout="wide", page_icon="logo_takatrade.png")
 
 # Refresh otomatis 30 menit
@@ -44,7 +44,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. DATABASE ASET (IDENTIK 100% DENGAN KODE LAMA) ---
+# --- 2. DATABASE ASET (IDENTIK 100%) ---
 crypto_list = sorted(["BTC-USD", "ETH-USD", "BNB-USD", "SOL-USD", "XRP-USD", "ADA-USD", "DOGE-USD", "TRX-USD", "DOT-USD", "MATIC-USD", "LTC-USD", "AVAX-USD", "LINK-USD", "BCH-USD", "SHIB-USD", "NEAR-USD", "ARB-USD", "OP-USD", "SUI-USD", "APT-USD", "TIA-USD", "SEI-USD", "INJ-USD", "STX-USD", "ALGO-USD", "FTM-USD", "EGLD-USD", "ATOM-USD", "HBAR-USD", "IMX-USD", "FET-USD", "RENDER-USD", "TAO-USD", "RNDR-USD", "AKASH-USD", "ONDO-USD", "PENDLE-USD", "UNI-USD", "AAVE-USD", "LDO-USD", "MKR-USD", "RUNE-USD", "JUP-USD", "CAKE-USD", "OKB-USD", "PEPE-USD", "BONK-USD", "WIF-USD", "FLOKI-USD", "POPCAT-USD", "BRETT-USD", "MOG-USD"])
 global_indices_forex = sorted(["EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X", "USDCAD=X", "USDCHF=X", "NZDUSD=X", "EURGBP=X", "EURJPY=X", "GBPJPY=X", "AUDJPY=X", "EURCHF=X", "CHFJPY=X", "EURAUD=X", "GBPAUD=X", "CADJPY=X", "NZDJPY=X", "AUDNZD=X", "USDIDR=X", "SGDIDR=X", "USDSGD=X", "USDTHB=X", "USDHKD=X", "USDCNY=X", "USDMXN=X", "USDMYR=X", "USDPHP=X", "USDVND=X", "USDKRW=X", "^JKSE", "^GSPC", "^IXIC", "^DJI", "^N225", "^HSI", "^FTSE", "^GDAXI", "^FCHI", "^AXJO", "^STI", "GC=F", "SI=F", "CL=F", "BZ=F", "HG=F", "NG=F", "PA=F", "PL=F"])
 stock_us = sorted(["NVDA", "TSLA", "AAPL", "MSFT", "GOOGL", "AMZN", "META", "AMD", "NFLX", "COIN", "JPM", "V"])
@@ -52,7 +52,7 @@ stock_id = sorted(["BBCA.JK", "BBRI.JK", "TLKM.JK", "BMRI.JK", "ASII.JK", "GOTO.
 
 database_aset = {"🌍 GLOBAL MARKET & FOREX": global_indices_forex, "💎 CRYPTOCURRENCY": crypto_list, "🇺🇸 US STOCKS": stock_us, "🇮🇩 INDONESIA STOCKS": stock_id}
 
-# --- 3. SIDEBAR NAVIGATION (IDENTIK 100%) ---
+# --- 3. SIDEBAR NAVIGATION ---
 with st.sidebar:
     st.markdown('<div class="logo-container">TAKATRADE PRO</div>', unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #FFD700; font-family: sans-serif; font-size: 10px; letter-spacing: 2px; margin-top: -15px; margin-bottom: 25px; opacity: 0.85; font-weight: bold;'>TERMINAL TRADING CERDAS</p>", unsafe_allow_html=True)
@@ -67,7 +67,7 @@ with st.sidebar:
     if "epochs" not in st.session_state: st.session_state.epochs = 12
     if "modal" not in st.session_state: st.session_state.modal = 1000
 
-# --- 4. CORE ENGINE (SKALABILITAS & PROTEKSI INTEGRATED) ---
+# --- 4. CORE ENGINE (SKALABILITAS & PROTEKSI) ---
 def add_indicators_clean(df):
     df = df.copy()
     delta = df['Close'].diff()
@@ -85,27 +85,21 @@ def add_indicators_clean(df):
     df['ATR'] = df['High'].rolling(14).max() - df['Low'].rolling(14).min()
     return df.ffill().bfill().dropna()
 
-# Fitur Skalabilitas: Caching Data
 @st.cache_data(ttl=300)
 def fetch_market_data(ticker, period, interval):
     return yf.download(ticker, period=period, interval=interval, progress=False)
 
 def train_ai_pro(ticker, interval, period, epochs):
     K.clear_session(); gc.collect()
-    
-    # Fitur: Timeframe Proteksi
     df_raw = fetch_market_data(ticker, period, interval)
     if df_raw.empty or len(df_raw) < 55: return None, 0, 0
-    
     if isinstance(df_raw.columns, pd.MultiIndex): df_raw.columns = df_raw.columns.get_level_values(0)
     df_clean = add_indicators_clean(df_raw)
     
-    # Fitur: Skalabilitas Fitur
     features = ['Close', 'Volume', 'RSI', 'MACD']
     scaler = MinMaxScaler()
     scaled_data = scaler.fit_transform(df_clean[features].values)
     
-    # Fitur: Kecepatan Training (Optimized Window & Early Stopping)
     window = 20 
     x, y = [], []
     for i in range(window, len(scaled_data)):
@@ -118,8 +112,6 @@ def train_ai_pro(ticker, interval, period, epochs):
         Dense(1)
     ])
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.01), loss='mse')
-    
-    # Kecepatan: Batch size lebih besar & Early Stopping
     callback = tf.keras.callbacks.EarlyStopping(monitor='loss', patience=2)
     model.fit(np.array(x), np.array(y), epochs=epochs, batch_size=64, verbose=0, callbacks=[callback])
     
@@ -129,12 +121,14 @@ def train_ai_pro(ticker, interval, period, epochs):
     
     return df_clean, res_pred, 96.5
 
-# --- 5. MODULES TAMBAHAN (IDENTIK) ---
+# --- 5. MODULES TAMBAHAN ---
 def get_news_aggregator(ticker):
-    try: return yf.Ticker(ticker).news[:3]
+    try:
+        data = yf.Ticker(ticker)
+        return data.news[:3] if data.news else []
     except: return []
 
-# --- 6. MAIN DASHBOARD (DESAIN & FITUR IDENTIK 100%) ---
+# --- 6. MAIN DASHBOARD ---
 if selected == "Intelligence":
     waktu_wib = datetime.utcnow() + timedelta(hours=7)
     st.markdown(f"### TAKATRADE Pro | {waktu_wib.strftime('%H:%M:%S')} WIB")
@@ -158,20 +152,17 @@ if selected == "Intelligence":
                     macd_bull = df_res['MACD'].iloc[-1] > df_res['Signal'].iloc[-1]
                     rsi_now = df_res['RSI'].iloc[-1]
                     
-                    # Sentiment & Action Logic (Identik Code Lama)
                     inst_flow = "ACCUMULATION 🏦" if df_res['OBV'].iloc[-1] > df_res['OBV'].rolling(10).mean().iloc[-1] else "DISTRIBUTION 🏛️"
                     if pct > 0.5 and macd_bull: action, color = "STRONG BUY 🚀", "#00FFCC"
                     elif pct > 0: action, color = "BUY 🟢", "#00FFCC"
                     elif pct < -0.5: action, color = "STRONG SELL 🔴", "#FF4B4B"
                     else: action, color = "HOLD ⚖️", "#FFA500"
 
-                    # Risk Management (Identik Code Lama)
                     atr = df_res['ATR'].iloc[-1]
                     sl = curr - (atr * 1.5) if "BUY" in action else curr + (atr * 1.5)
                     tp = curr + (abs(curr-sl) * 2.5)
                     qty = (st.session_state.modal * 0.02) / abs(curr - sl if curr != sl else 1)
 
-                    # UI Metrics
                     m1, m2 = st.columns(2); m1.metric("Live Price", f"{curr:,.4f}"); m2.metric(f"AI Target ({horizon_label})", f"{pred:,.4f}", f"{pct:+.2f}%")
                     m3, m4 = st.columns(2); m3.metric("Inst. Flow", inst_flow); m4.metric("RSI (14)", f"{rsi_now:.2f}")
 
@@ -183,19 +174,35 @@ if selected == "Intelligence":
                         </div>
                     """, unsafe_allow_html=True)
 
-                    # News
                     news = get_news_aggregator(t)
                     if news:
                         with st.expander("📰 Latest Market Intelligence"):
                             for n in news:
-                                st.markdown(f"<div class='news-card'><b>{n['title']}</b></div>", unsafe_allow_html=True)
+                                title = n.get('title', 'No News Title Available')
+                                st.markdown(f"<div class='news-card'><b>{title}</b></div>", unsafe_allow_html=True)
 
-                    # Plotting (Identik Code Lama + BB)
+                    # --- TAJAM & MENARIK CHART CONFIG ---
                     fig = go.Figure()
-                    fig.add_trace(go.Candlestick(x=df_res.index[-60:], open=df_res['Open'], high=df_res['High'], low=df_res['Low'], close=df_res['Close'], name="Market"))
-                    fig.add_trace(go.Scatter(x=df_res.index[-60:], y=df_res['Upper'], line=dict(color='rgba(255,215,0,0.2)'), name="BB Upper"))
-                    fig.add_trace(go.Scatter(x=df_res.index[-60:], y=df_res['Lower'], line=dict(color='rgba(255,215,0,0.2)'), name="BB Lower"))
-                    fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, height=450, paper_bgcolor='black', plot_bgcolor='black')
+                    # Candlestick dengan Neon Color
+                    fig.add_trace(go.Candlestick(
+                        x=df_res.index[-60:], open=df_res['Open'], high=df_res['High'], 
+                        low=df_res['Low'], close=df_res['Close'], name="Market",
+                        increasing_line_color='#00FFCC', decreasing_line_color='#FF4B4B'
+                    ))
+                    # Bollinger Bands dengan Glow Effect (Low Opacity Fill)
+                    fig.add_trace(go.Scatter(x=df_res.index[-60:], y=df_res['Upper'], line=dict(color='rgba(255,215,0,0.3)', width=1), name="BB Upper"))
+                    fig.add_trace(go.Scatter(x=df_res.index[-60:], y=df_res['Lower'], line=dict(color='rgba(255,215,0,0.3)', width=1), fill='tonexty', fillcolor='rgba(255,215,0,0.02)', name="BB Lower"))
+                    
+                    fig.update_layout(
+                        template="plotly_dark", 
+                        xaxis_rangeslider_visible=False, 
+                        height=500, 
+                        paper_bgcolor='black', 
+                        plot_bgcolor='black',
+                        margin=dict(l=0, r=0, t=30, b=0),
+                        yaxis=dict(gridcolor='rgba(255,255,255,0.05)', title="Price Action"),
+                        xaxis=dict(gridcolor='rgba(255,255,255,0.05)')
+                    )
                     st.plotly_chart(fig, use_container_width=True)
 
 elif selected == "Radar":
@@ -209,7 +216,7 @@ elif selected == "Radar":
             progress.progress((idx + 1) / len(assets))
             df_r, pred_r, _ = train_ai_pro(ticker, interval_map[horizon_label], period_map[horizon_label], 5)
             if df_r is not None:
-                curr_r = df_res['Close'].iloc[-1] if 'df_res' in locals() else df_r['Close'].iloc[-1]
+                curr_r = df_r['Close'].iloc[-1]
                 pct_r = ((pred_r - curr_r) / curr_r) * 100
                 results.append({"Aset": ticker, "Price": round(curr_r, 4), "Forecast": f"{pct_r:+.2f}%", "Signal": "BUY" if pct_r > 0 else "SELL"})
         st.dataframe(pd.DataFrame(results), use_container_width=True)
@@ -231,6 +238,7 @@ st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learni
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
