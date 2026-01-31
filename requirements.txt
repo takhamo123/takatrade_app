@@ -3,6 +3,7 @@ yfinance
 pandas
 numpy
 scikit-learn
-tensorflow-cpu
+tensorflow
 plotly
-streamlit-option_menu
+streamlit-option-menu
+textblob
