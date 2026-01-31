@@ -5,7 +5,9 @@ numpy
 scikit-learn
 tensorflow
 plotly
-streamlit-option-menu
+streamlit-option_menu
+vaderSentiment
 textblob
 nltk
+
 
