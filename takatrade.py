@@ -6,11 +6,11 @@ from sklearn.preprocessing import MinMaxScaler
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout, Input
-from tensorflow.keras import backend as K # TAMBAHAN: Reset Session
+from tensorflow.keras import backend as K 
 import plotly.graph_objects as go
 from streamlit_option_menu import option_menu
 from datetime import datetime, timedelta
-import gc # TAMBAHAN: Garbage Collector
+import gc 
 
 # Menghilangkan warning dekoratif pandas
 pd.options.mode.chained_assignment = None
@@ -18,7 +18,7 @@ pd.options.mode.chained_assignment = None
 # --- 1. CONFIG & UI PREMIUM ---
 st.set_page_config(page_title="TAKATRADE PRO", layout="wide", page_icon="logo_takatrade.png")
 
-# Refresh ditingkatkan ke 30 menit (1800 detik) agar proses Radar tidak terputus
+# Refresh otomatis 30 menit
 st.markdown('<meta http-equiv="refresh" content="1800">', unsafe_allow_html=True)
 
 st.markdown("""
@@ -70,7 +70,6 @@ with st.sidebar:
 
 # --- 4. ENGINE AI (MEMORY OPTIMIZED) ---
 def train_ai_pro(ticker, interval, period, steps, epochs):
-    # Membersihkan sisa memori sebelum proses dimulai
     K.clear_session()
     gc.collect()
 
@@ -112,7 +111,6 @@ def train_ai_pro(ticker, interval, period, steps, epochs):
         last_batch.append([p[0, 0], last_batch[-1][1]])
     res_preds = scaler.inverse_transform(np.column_stack([preds, [0]*steps]))[:, 0]
 
-    # PROSES MENGHAPUS MEMORI SETELAH TRAINING
     del model
     K.clear_session()
     gc.collect()
@@ -132,7 +130,6 @@ if selected == "Intelligence":
         for i, t in enumerate(pilihan):
             with tabs[i]:
                 with st.spinner(f'AI memproses {t}...'):
-                    # Panggil mesin AI tanpa cache untuk mencegah RAM penuh
                     df_raw, preds, acc = train_ai_pro(t, interval_map[horizon_label], period_map[horizon_label], 1, st.session_state.epochs)
                     if df_raw is None: continue
                     curr, target = float(df_raw['Close'].iloc[-1]), float(preds[-1])
@@ -158,40 +155,49 @@ if selected == "Intelligence":
                     else:
                         df_plot.index = df_plot.index.tz_convert('Asia/Jakarta')
 
+                    # Sinkronisasi waktu sistem dan data
                     diff_time = waktu_wib.replace(tzinfo=None) - df_plot.index[-1].replace(tzinfo=None)
                     if abs(diff_time.total_seconds()) > 60:
                         df_plot.index = df_plot.index + diff_time
 
+                    # --- VISUAL CHART TAJAM ---
                     fig = go.Figure()
                     fig.add_trace(go.Candlestick(
                         x=df_plot.index[-60:], open=df_plot['Open'].iloc[-60:], 
                         high=df_plot['High'].iloc[-60:], low=df_plot['Low'].iloc[-60:], 
-                        close=df_plot['Close'].iloc[-60:], name="Market"
+                        close=df_plot['Close'].iloc[-60:], name="Market",
+                        increasing_line_color='#00FFCC', decreasing_line_color='#FF4B4B'
                     ))
                     
                     last_date = df_plot.index[-1]
                     delta_map = {"5m":5, "10m":10, "15m":15, "30m":30, "1h":60, "1d":1440, "1wk":10080, "1mo":43200}
-                    f_dates = [last_date + timedelta(minutes=delta_map[horizon_label])]
+                    f_dates = [last_date + timedelta(minutes=delta_map[horizon_label] * (i+1)) for i in range(len(preds))]
                     
+                    # AI Path Glowing
                     fig.add_trace(go.Scatter(
-                        x=f_dates, y=preds, name="AI Path", 
-                        line=dict(color='#FFD700', width=3, dash='dot'),
-                        mode='markers+lines', marker=dict(size=10, symbol='diamond')
+                        x=f_dates, y=preds, name="AI Projection", 
+                        line=dict(color='#FFD700', width=4, dash='dot'),
+                        mode='markers+lines', marker=dict(size=12, symbol='diamond', line=dict(width=2, color='white'))
                     ))
                     
                     fig.add_trace(go.Scatter(
                         x=[df_plot.index[-1], f_dates[0]], y=[curr, preds[0]],
-                        showlegend=False, line=dict(color='#FFD700', width=2, dash='dot')
+                        showlegend=False, line=dict(color='rgba(255, 215, 0, 0.4)', width=2, dash='dot')
                     ))
 
                     fig.update_layout(
-                        template="plotly_dark", xaxis_rangeslider_visible=False, height=450, 
-                        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
-                        margin=dict(l=5, r=5, t=30, b=5),
-                        xaxis=dict(tickformat='%H:%M\n%d %b'),
+                        template="plotly_dark", 
+                        xaxis_rangeslider_visible=False, 
+                        height=500, 
+                        paper_bgcolor='black', 
+                        plot_bgcolor='black',
+                        margin=dict(l=10, r=10, t=10, b=10),
+                        font=dict(family="Arial", size=12, color="white"),
+                        xaxis=dict(showgrid=True, gridcolor='#1a1a1a', tickformat='%H:%M\n%d %b'),
+                        yaxis=dict(showgrid=True, gridcolor='#1a1a1a', side="right"),
                         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                     )
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
                     st.info(f"💡 **AI Logic:** Akurasi {acc:.1f}%. Analisis real-time timeframe {horizon_label}.")
 
 elif selected == "Radar":
@@ -219,12 +225,8 @@ elif selected == "Radar":
                 if abs(pct_r) > 1.0:
                     status = "STRONG BUY 🟢" if pct_r > 1.5 else "BUY 🟢" if pct_r > 0 else "STRONG SELL 🔴" if pct_r < -1.5 else "SELL 🔴"
                     results.append({
-                        "Aset": ticker,
-                        "Timeframe": horizon_label,
-                        "Price": round(curr_r, 4),
-                        "AI Target": round(target_r, 4),
-                        "Potensi (%)": f"{pct_r:+.2f}%",
-                        "Signal": status
+                        "Aset": ticker, "Timeframe": horizon_label, "Price": round(curr_r, 4),
+                        "AI Target": round(target_r, 4), "Potensi (%)": f"{pct_r:+.2f}%", "Signal": status
                     })
         
         if results:
@@ -233,9 +235,9 @@ elif selected == "Radar":
                 color = '#00FFCC' if 'BUY' in val else '#FF4B4B'
                 return f'color: {color}; font-weight: bold'
             st.dataframe(df_results.style.applymap(color_signal, subset=['Signal']), use_container_width=True)
-            st.success(f"Scanning selesai! Menemukan {len(results)} peluang pada timeframe {horizon_label}.")
+            st.success(f"Scanning selesai! Menemukan {len(results)} peluang.")
         else:
-            st.warning(f"Tidak ditemukan sinyal kuat pada timeframe {horizon_label} saat ini.")
+            st.warning(f"Tidak ditemukan sinyal kuat pada timeframe {horizon_label}.")
 
 else:
     st.title("⚙️ Settings")
@@ -255,6 +257,7 @@ st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learni
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
