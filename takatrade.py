@@ -3,11 +3,14 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
+import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout, Input
+from tensorflow.keras import backend as K # TAMBAHAN: Reset Session
 import plotly.graph_objects as go
 from streamlit_option_menu import option_menu
 from datetime import datetime, timedelta
+import gc # TAMBAHAN: Garbage Collector
 
 # Menghilangkan warning dekoratif pandas
 pd.options.mode.chained_assignment = None
@@ -65,9 +68,12 @@ with st.sidebar:
     if "epochs" not in st.session_state: st.session_state.epochs = 12
     if "modal" not in st.session_state: st.session_state.modal = 1000
 
-# --- 4. ENGINE AI ---
-@st.cache_resource(show_spinner=False)
+# --- 4. ENGINE AI (MEMORY OPTIMIZED) ---
 def train_ai_pro(ticker, interval, period, steps, epochs):
+    # Membersihkan sisa memori sebelum proses dimulai
+    K.clear_session()
+    gc.collect()
+
     df = yf.download(ticker, period=period, interval=interval, progress=False)
     if df.empty: return None, None, 0
     if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
@@ -105,6 +111,12 @@ def train_ai_pro(ticker, interval, period, steps, epochs):
         preds.append(p[0, 0])
         last_batch.append([p[0, 0], last_batch[-1][1]])
     res_preds = scaler.inverse_transform(np.column_stack([preds, [0]*steps]))[:, 0]
+
+    # PROSES MENGHAPUS MEMORI SETELAH TRAINING
+    del model
+    K.clear_session()
+    gc.collect()
+
     return df, res_preds, accuracy
 
 # --- 5. MAIN DASHBOARD ---
@@ -120,6 +132,7 @@ if selected == "Intelligence":
         for i, t in enumerate(pilihan):
             with tabs[i]:
                 with st.spinner(f'AI memproses {t}...'):
+                    # Panggil mesin AI tanpa cache untuk mencegah RAM penuh
                     df_raw, preds, acc = train_ai_pro(t, interval_map[horizon_label], period_map[horizon_label], 1, st.session_state.epochs)
                     if df_raw is None: continue
                     curr, target = float(df_raw['Close'].iloc[-1]), float(preds[-1])
@@ -145,7 +158,6 @@ if selected == "Intelligence":
                     else:
                         df_plot.index = df_plot.index.tz_convert('Asia/Jakarta')
 
-                    # KALIBRASI WAKTU KE 06.37 WIB
                     diff_time = waktu_wib.replace(tzinfo=None) - df_plot.index[-1].replace(tzinfo=None)
                     if abs(diff_time.total_seconds()) > 60:
                         df_plot.index = df_plot.index + diff_time
@@ -197,7 +209,6 @@ elif selected == "Radar":
         
         for idx, ticker in enumerate(aset_list):
             progress_bar.progress((idx + 1) / len(aset_list))
-            # Scan otomatis mengikuti timeframe yang dipilih di sidebar
             df_r, preds_r, acc_r = train_ai_pro(ticker, interval_map[horizon_label], period_map[horizon_label], 1, 5)
             
             if df_r is not None:
@@ -205,7 +216,7 @@ elif selected == "Radar":
                 target_r = preds_r[-1]
                 pct_r = ((target_r - curr_r) / curr_r) * 100
                 
-                if abs(pct_r) > 1.0: # Ambang batas sinyal 1%
+                if abs(pct_r) > 1.0:
                     status = "STRONG BUY 🟢" if pct_r > 1.5 else "BUY 🟢" if pct_r > 0 else "STRONG SELL 🔴" if pct_r < -1.5 else "SELL 🔴"
                     results.append({
                         "Aset": ticker,
@@ -244,6 +255,7 @@ st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learni
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
