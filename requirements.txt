@@ -1,9 +1,10 @@
 streamlit
 yfinance
 pandas
-numpy
+numpy<2.0.0
 scikit-learn
 tensorflow
 plotly
 streamlit-option-menu
 textblob
+nltk
