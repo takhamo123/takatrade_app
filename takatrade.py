@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 from streamlit_option_menu import option_menu
 from datetime import datetime, timedelta
 import gc 
+import requests  # Tambahan untuk Telegram
 
 # Menghilangkan warning dekoratif pandas
 pd.options.mode.chained_assignment = None
@@ -52,7 +53,18 @@ stock_id = sorted(["BBCA.JK", "BBRI.JK", "BMRI.JK", "BBNI.JK", "TLKM.JK", "ASII.
 
 database_aset = {"🌍 GLOBAL MARKET & FOREX": global_indices_forex, "💎 CRYPTOCURRENCY": crypto_list, "🇺🇸 US STOCKS": stock_us, "🇮🇩 INDONESIA STOCKS": stock_id}
 
-# --- 3. SIDEBAR NAVIGATION ---
+# --- 3. TELEGRAM ENGINE (MODULAR) ---
+def send_telegram_alert(message):
+    # SILAKAN ISI TOKEN & ID ANDA DI SINI
+    token = "8537224943:AAFDTpCWTVN_Q3K3KjbVXe82YP1-80Y1r_E"
+    chat_id = "6632588873"
+    if token == "8537224943:AAFDTpCWTVN_Q3K3KjbVXe82YP1-80Y1r_E": return
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
+    try: requests.post(url, data=payload, timeout=5)
+    except: pass
+
+# --- 4. SIDEBAR NAVIGATION ---
 with st.sidebar:
     st.markdown('<div class="logo-container">TAKATRADE PRO</div>', unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #FFD700; font-family: sans-serif; font-size: 10px; letter-spacing: 2px; margin-top: -15px; margin-bottom: 25px; opacity: 0.85; font-weight: bold;'>TERMINAL TRADING CERDAS</p>", unsafe_allow_html=True)
@@ -67,7 +79,7 @@ with st.sidebar:
     if "epochs" not in st.session_state: st.session_state.epochs = 15
     if "modal" not in st.session_state: st.session_state.modal = 1000
 
-# --- 4. CORE ENGINE ---
+# --- 5. CORE ENGINE ---
 def add_indicators_clean(df):
     df = df.copy()
     delta = df['Close'].diff()
@@ -131,7 +143,7 @@ def train_ai_pro(ticker, interval, period, epochs):
     
     return df_clean, res_pred, 97.2
 
-# --- 5. MODULES TAMBAHAN ---
+# --- 6. MODULES TAMBAHAN ---
 def get_news_aggregator(ticker):
     try:
         t = yf.Ticker(ticker)
@@ -140,7 +152,7 @@ def get_news_aggregator(ticker):
         return [{'title': n.get('title') or "Intelligence Update"} for n in raw_news[:3]]
     except: return []
 
-# --- 6. MAIN DASHBOARD ---
+# --- 7. MAIN DASHBOARD ---
 if selected == "Intelligence":
     waktu_wib = datetime.utcnow() + timedelta(hours=7)
     st.markdown(f"### TAKATRADE Pro | {waktu_wib.strftime('%H:%M:%S')} WIB")
@@ -169,6 +181,11 @@ if selected == "Intelligence":
                     elif pct > 0: action, color = "BUY 🟢", "#00FFCC"
                     elif pct < -0.6: action, color = "STRONG SELL 🔴", "#FF4B4B"
                     else: action, color = "HOLD ⚖️", "#FFA500"
+
+                    # --- TELEGRAM ALERT TRIGGER ---
+                    if "STRONG" in action:
+                        alert_msg = f"🚀 *TAKATRADE ALERT*\nAset: {t}\nSinyal: {action}\nHarga: {curr:,.2f}\nTarget: {pred:,.2f} ({pct:+.2f}%)"
+                        send_telegram_alert(alert_msg)
 
                     atr = df_res['ATR'].iloc[-1]
                     sl = curr - (atr * 2.0) if "BUY" in action else curr + (atr * 2.0)
@@ -215,21 +232,18 @@ if selected == "Intelligence":
                             hist_data = df_res['Close'].tail(40).values
                             matches = 0
                             total_tests = len(hist_data) - 10
-                            
                             for j in range(total_tests):
                                 p_now = hist_data[j]
                                 p_future = hist_data[j+5]
                                 actual_move = "UP" if p_future > p_now else "DOWN"
                                 predicted_move = "UP" if pct > 0 else "DOWN"
                                 if actual_move == predicted_move: matches += 1
-                                
                             win_rate = (matches / total_tests) * 100 if total_tests > 0 else 0
-                            
                             c_bt1, c_bt2, c_bt3 = st.columns(3)
                             c_bt1.metric("Historical Win Rate", f"{win_rate:.1f}%")
                             c_bt2.metric("Predictive Alpha", f"{(win_rate - 50) * 0.1:+.2f}")
                             c_bt3.metric("Model Stability", "EXCELLENT" if win_rate > 60 else "STABLE")
-                            st.caption("Analisis ini membandingkan arah prediksi AI dengan data historis 40 periode terakhir untuk memastikan model tidak sedang mengalami overfitting.")
+                            st.caption("Analisis pembanding arah prediksi AI dengan data historis 40 periode terakhir.")
 
 elif selected == "Radar":
     st.markdown("### 📡 Market Radar Scan")
@@ -244,8 +258,15 @@ elif selected == "Radar":
             if df_r is not None:
                 curr_r = df_r['Close'].iloc[-1]
                 pct_r = ((pred_r - curr_r) / curr_r) * 100
-                results.append({"Aset": ticker, "Price": round(curr_r, 4), "Forecast": f"{pct_r:+.2f}%", "Signal": "BUY" if pct_r > 0.2 else "SELL" if pct_r < -0.2 else "HOLD"})
+                sig = "BUY" if pct_r > 0.2 else "SELL" if pct_r < -0.2 else "HOLD"
+                results.append({"Aset": ticker, "Price": round(curr_r, 4), "Forecast": f"{pct_r:+.2f}%", "Signal": sig})
+        
         st.dataframe(pd.DataFrame(results), use_container_width=True)
+        
+        # --- AUTOMATED REPORTING TELEGRAM ---
+        if results:
+            report = "📡 *RADAR SCAN REPORT*\n" + "\n".join([f"- {r['Aset']}: {r['Signal']} ({r['Forecast']})" for r in results[:10]])
+            send_telegram_alert(report)
 
 else:
     st.title("⚙️ Settings")
@@ -264,6 +285,7 @@ st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learni
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
