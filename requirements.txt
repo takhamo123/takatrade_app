@@ -1,24 +1,26 @@
-# Core Framework & UI
+# --- Core Framework & UI ---
 streamlit
 plotly
 streamlit-option-menu
 
-# Data Manipulation & Numerics
+# --- Data Manipulation & Numerics ---
 pandas
 numpy
 scikit-learn
 
-# Machine Learning & AI
+# --- Machine Learning & AI ---
 tensorflow
 
-# Data Source
+# --- Data Source & API ---
 yfinance
+requests
 
-# Text & Sentiment Analysis (Anda menambahkan ini)
+# --- Text & Sentiment Analysis ---
 nltk
-textblob
 vaderSentiment
 
-# Utilities & API
-requests
-python-dotenv  # <-- INI YANG DITAMBAHKAN
+# --- Utilities & Configuration ---
+python-dotenv
+
+# --- Library Tambahan (Jika Diperlukan Masa Depan) ---
+# textblob
