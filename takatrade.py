@@ -74,10 +74,30 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # --- Database Aset ---
-crypto_list = sorted(["BTC-USD", "ETH-USD", "BNB-USD", "SOL-USD", "XRP-USD", "ADA-USD", "DOGE-USD", "TRX-USD", "DOT-USD", "MATIC-USD", "LTC-USD", "AVAX-USD", "LINK-USD", "BCH-USD", "SHIB-USD", "NEAR-USD", "ARB-USD", "OP-USD", "SUI-USD", "APT-USD", "TIA-USD", "SEI-USD", "INJ-USD", "STX-USD", "ALGO-USD", "FTM-USD", "EGLD-USD", "ATOM-USD", "HBAR-USD", "IMX-USD", "FET-USD", "RENDER-USD", "TAO-USD", "RNDR-USD", "AKASH-USD", "ONDO-USD", "PENDLE-USD", "UNI-USD", "AAVE-USD", "LDO-USD", "MKR-USD", "RUNE-USD", "JUP-USD", "CAKE-USD", "OKB-USD", "PEPE-USD", "BONK-USD", "WIF-USD", "FLOKI-USD", "POPCAT-USD", "BRETT-USD", "MOG-USD"])
-global_indices_forex = sorted(["EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X", "USDCAD=X", "USDCHF=X", "NZDUSD=X", "EURGBP=X", "EURJPY=X", "GBPJPY=X", "AUDJPY=X", "EURCHF=X", "CHFJPY=X", "EURAUD=X", "GBPAUD=X", "CADJPY=X", "NZDJPY=X", "AUDNZD=X", "USDIDR=X", "SGDIDR=X", "USDSGD=X", "USDTHB=X", "USDHKD=X", "USDCNY=X", "USDMXN=X", "USDMYR=X", "USDPHP=X", "USDVND=X", "USDKRW=X", "^JKSE", "^GSPC", "^IXIC", "^DJI", "^N225", "^HSI", "^FTSE", "^GDAXI", "^FCHI", "^AXJO", "^STI", "GC=F", "SI=F", "CL=F", "BZ=F", "HG=F", "NG=F", "PA=F", "PL=F"])
-stock_us = sorted(["NVDA", "TSLA", "AAPL", "MSFT", "GOOGL", "AMZN", "META", "AMD", "NFLX", "COIN", "JPM", "V"])
-stock_id = sorted(["BBCA.JK", "BBRI.JK", "TLKM.JK", "BMRI.JK", "ASII.JK", "GOTO.JK", "ANTM.JK", "ADRO.JK", "BBNI.JK", "UNVR.JK", "BRMS.JK"])
+# Daftar aset telah diperluas dengan lebih banyak pilihan
+
+crypto_list = sorted([
+    "BTC-USD", "ETH-USD", "SOL-USD", "BNB-USD", "AVAX-USD", "DOT-USD", "XRP-USD", "ADA-USD", 
+    "LINK-USD", "MATIC-USD", "UNI-USD", "AAVE-USD", "ATOM-USD", "AR-USD", "OP-USD", "LDO-USD", "INJ-USD"
+])
+
+global_indices_forex = sorted([
+    "GC=F", "SI=F", "CL=F", "NG=F",  # Tambah: Natural Gas
+    "EURUSD=X", "USDJPY=X", "GBPUSD=X", "USDIDR=X", "AUDUSD=X", "NZDUSD=X", # Tambah: AUD/USD, NZD/USD
+    "^GSPC", "^IXIC", "^DJI", "^JKSE", "^STOXX50E" # Tambah: European Index
+])
+
+stock_us = sorted([
+    "NVDA", "AAPL", "MSFT", "TSLA", "GOOGL", "AMZN", "META", "AMD", "NFLX", "COIN",
+    "JPM", "BAC", "WMT", "JNJ", "UNH", "PG", "KO", "XOM", "CVX", "MA" # Tambah: Finance, Retail, Healthcare, Energy, dll.
+])
+
+stock_id = sorted([
+    "BBCA.JK", "BBRI.JK", "BMRI.JK", "BBNI.JK", "BTPN.JK", # Tambah: BTPN
+    "TLKM.JK", "ISAT.JK", "EXCL.JK", # Tambah: Telkom lainnya
+    "ASII.JK", "ANTM.JK", "ADRO.JK", "BRMS.JK", "GOTO.JK",
+    "UNVR.JK", "INDF.JK", "KLBF.JK", "BBRI.JK" # Tambah: Consumer Goods, Pharma
+])
 
 database_aset = {
     "🌍 GLOBAL MARKET & FOREX": global_indices_forex,
@@ -97,7 +117,8 @@ def send_telegram_alert(message):
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
     if not token or not chat_id or token == "YOUR_TOKEN_HERE" or chat_id == "YOUR_CHAT_ID_HERE":
-        st.warning("Telegram Alert tidak aktif. Atur TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID di file .env")
+        # Tidak menampilkan warning di sini agar tidak mengganggu saat radar scan
+        # st.warning("Telegram Alert tidak aktif. Atur TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID di file .env")
         return
         
     url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -105,7 +126,9 @@ def send_telegram_alert(message):
     try:
         requests.post(url, data=payload, timeout=5)
     except requests.exceptions.RequestException as e:
-        st.error(f"Gagal mengirim notifikasi Telegram: {e}")
+        # Tidak menampilkan error di sini agar tidak mengganggu
+        # st.error(f"Gagal mengirim notifikasi Telegram: {e}")
+        pass
 
 def get_sentiment(text):
     """Menganalisis sentimen dari sebuah teks dan mengembalikan label serta skor."""
@@ -171,6 +194,13 @@ def train_ai_pro(ticker, interval, period, epochs):
         df_raw.columns = df_raw.columns.get_level_values(0)
         
     df_clean = add_indicators_clean(df_raw)
+
+    # --- PERBAIKAN KRUSIAL: PEMERIKSAAN DATA SETELAH PEMBERSIHAN ---
+    # Pastikan kita punya cukup data SETELAH dibersihkan sebelum melatih model
+    if df_clean.empty or len(df_clean) < 60:
+        st.warning(f"Data untuk {ticker} tidak mencukupi setelah dibersihkan. Coba timeframe/periode yang lebih besar.")
+        return None, 0
+
     features = ['Close', 'Volume', 'RSI', 'MACD']
     scaler = RobustScaler()
     scaled_data = scaler.fit_transform(df_clean[features].values)
@@ -334,7 +364,7 @@ if selected == "Intelligence":
                     st.markdown("---")
                     with st.expander("📊 AI Performance Backtest (Walk-Forward Analysis)"):
                         with st.spinner("Validating historical accuracy..."):
-                            hist_data = df_res.copy() # Perbaikan: Gunakan df_res
+                            hist_data = df_res.copy()
                             features_bt = ['Close', 'Volume', 'RSI', 'MACD']
                             scaler_bt = RobustScaler()
                             win_count, total_tests, window_bt = 0, 0, 30
@@ -413,6 +443,7 @@ st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learni
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
