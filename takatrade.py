@@ -19,12 +19,9 @@ from dotenv import load_dotenv
 import nltk
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
-# INTEGRASI SENTIMEN: Pastikan data yang dibutuhkan NLTK sudah diunduh
-# Ini penting agar tidak error saat dijalankan di server
-try:
-    nltk.data.find('sentiment/vader_lexicon.zip')
-except nltk.downloader.DownloadError:
-    nltk.download('vader_lexicon')
+# INTEGRASI SENTIMEN: Unduh data NLTK yang diperlukan
+# NLTK tidak akan mengunduh ulang jika data sudah ada
+nltk.download('vader_lexicon', quiet=True)
 
 # Muat variabel dari file .env
 load_dotenv()
@@ -373,6 +370,7 @@ st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learni
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
