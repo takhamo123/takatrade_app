@@ -1,13 +1,24 @@
+# Core Framework & UI
 streamlit
-yfinance
+plotly
+streamlit-option-menu
+
+# Data Manipulation & Numerics
 pandas
 numpy
 scikit-learn
+
+# Machine Learning & AI
 tensorflow
-plotly
-streamlit-option_menu
-vaderSentiment
-textblob
+
+# Data Source
+yfinance
+
+# Text & Sentiment Analysis (Anda menambahkan ini)
 nltk
+textblob
+vaderSentiment
 
-
+# Utilities & API
+requests
+python-dotenv  # <-- INI YANG DITAMBAHKAN
