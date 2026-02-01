@@ -1,40 +1,55 @@
+# ==============================================================================
+# 1. IMPORTS & SETUP AWAL
+# ==============================================================================
+
+# Import Library Core & UI
 import streamlit as st
-import yfinance as yf
-import pandas as pd
-import numpy as np
-from sklearn.preprocessing import RobustScaler 
-import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout, Input, Bidirectional
-from tensorflow.keras import backend as K 
 import plotly.graph_objects as go
 from streamlit_option_menu import option_menu
 from datetime import datetime, timedelta
-import gc
-import requests
 import os
 from dotenv import load_dotenv
 
-# INTEGRASI SENTIMEN: Tambahkan library untuk analisis sentimen
+# Import Library Data & Numerics
+import pandas as pd
+import numpy as np
+import yfinance as yf
+import requests
+import gc
+
+# Import Library AI & Machine Learning
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout, Input, Bidirectional
+from tensorflow.keras import backend as K
+from sklearn.preprocessing import RobustScaler
+
+# Import Library Analisis Sentimen
 import nltk
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
-# INTEGRASI SENTIMEN: Unduh data NLTK yang diperlukan
-# NLTK tidak akan mengunduh ulang jika data sudah ada
-nltk.download('vader_lexicon', quiet=True)
-
-# Muat variabel dari file .env
+# --- Setup Keamanan & Konfigurasi Awal ---
+# Muat variabel dari file .env untuk keamanan
 load_dotenv()
 
-# Menghilangkan warning dekoratif pandas
+# Unduh data NLTK yang diperlukan. 'quiet=True' mencegah output yang tidak perlu.
+nltk.download('vader_lexicon', quiet=True)
+
+# Hilangkan warning pandas
 pd.options.mode.chained_assignment = None
 
-# --- 1. CONFIG & UI PREMIUM (IDENTIK 100%) ---
+
+# ==============================================================================
+# 2. KONFIGURASI UI & DATABASE ASET
+# ==============================================================================
+
+# --- Konfigurasi Halaman & Gaya Visual ---
 st.set_page_config(page_title="TAKATRADE PRO", layout="wide", page_icon="logo_takatrade.png")
 
-# Refresh otomatis 30 menit
+# Refresh otomatis setiap 30 menit
 st.markdown('<meta http-equiv="refresh" content="1800">', unsafe_allow_html=True)
 
+# CSS Kustom untuk tampilan premium
 st.markdown("""
     <style>
     header[data-testid="stHeader"] { background: rgba(0,0,0,0); }
@@ -58,21 +73,31 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. DATABASE ASET (IDENTIK 100%) ---
+# --- Database Aset ---
 crypto_list = sorted(["BTC-USD", "ETH-USD", "SOL-USD", "BNB-USD", "AVAX-USD", "DOT-USD", "XRP-USD", "ADA-USD", "LINK-USD", "MATIC-USD"])
 global_indices_forex = sorted(["GC=F", "SI=F", "CL=F", "EURUSD=X", "USDJPY=X", "GBPUSD=X", "USDIDR=X", "^GSPC", "^IXIC", "^DJI", "^JKSE"])
 stock_us = sorted(["NVDA", "AAPL", "MSFT", "TSLA", "GOOGL", "AMZN", "META", "AMD", "NFLX", "COIN"])
 stock_id = sorted(["BBCA.JK", "BBRI.JK", "BMRI.JK", "BBNI.JK", "TLKM.JK", "ASII.JK", "ANTM.JK", "ADRO.JK", "BRMS.JK", "GOTO.JK"])
 
-database_aset = {"🌍 GLOBAL MARKET & FOREX": global_indices_forex, "💎 CRYPTOCURRENCY": crypto_list, "🇺🇸 US STOCKS": stock_us, "🇮🇩 INDONESIA STOCKS": stock_id}
+database_aset = {
+    "🌍 GLOBAL MARKET & FOREX": global_indices_forex,
+    "💎 CRYPTOCURRENCY": crypto_list,
+    "🇺🇸 US STOCKS": stock_us,
+    "🇮🇩 INDONESIA STOCKS": stock_id
+}
 
-# --- 3. TELEGRAM ENGINE (MODULAR & AMAN) ---
+
+# ==============================================================================
+# 3. FUNGSI UTILITAS (TELEGRAM & SENTIMEN)
+# ==============================================================================
+
 def send_telegram_alert(message):
+    """Mengirim notifikasi ke Telegram jika kredensial sudah diatur."""
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
     if not token or not chat_id or token == "YOUR_TOKEN_HERE" or chat_id == "YOUR_CHAT_ID_HERE":
-        st.warning("Telegram Alert tidak aktif. Silakan atur TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID di file .env")
+        st.warning("Telegram Alert tidak aktif. Atur TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID di file .env")
         return
         
     url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -82,23 +107,26 @@ def send_telegram_alert(message):
     except requests.exceptions.RequestException as e:
         st.error(f"Gagal mengirim notifikasi Telegram: {e}")
 
-# --- 4. SIDEBAR NAVIGATION ---
-with st.sidebar:
-    st.markdown('<div class="logo-container">TAKATRADE PRO</div>', unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #FFD700; font-family: sans-serif; font-size: 10px; letter-spacing: 2px; margin-top: -15px; margin-bottom: 25px; opacity: 0.85; font-weight: bold;'>TERMINAL TRADING CERDAS</p>", unsafe_allow_html=True)
-    selected = option_menu(None, ["Intelligence", "Radar", "Settings"], 
-        icons=['cpu-fill', 'broadcast', 'gear-fill'], default_index=0, 
-        styles={"nav-link-selected": {"background-color": "#FFD700", "color": "black", "font-weight": "bold"}})
-    st.markdown("---")
-    st.subheader("⏱️ Forecasting Horizon")
-    horizon_label = st.select_slider("Pilih Jangka Waktu", options=["5m", "10m", "15m", "30m", "1h", "1d", "1wk", "1mo"])
-    interval_map = {"5m":"5m", "10m":"2m", "15m":"15m", "30m":"30m", "1h":"60m", "1d":"1d", "1wk":"1wk", "1mo":"1mo"}
-    period_map = {"5m":"1d", "10m":"1d", "15m":"5d", "30m":"5d", "1h":"1mo", "1d":"3y", "1wk":"max", "1mo":"max"}
-    if "epochs" not in st.session_state: st.session_state.epochs = 15
-    if "modal" not in st.session_state: st.session_state.modal = 1000
+def get_sentiment(text):
+    """Menganalisis sentimen dari sebuah teks dan mengembalikan label serta skor."""
+    analyzer = SentimentIntensityAnalyzer()
+    sentiment_dict = analyzer.polarity_scores(text)
+    score = sentiment_dict['compound']
+    
+    if score >= 0.05:
+        return "Positive 🟢", score
+    elif score <= -0.05:
+        return "Negative 🔴", score
+    else:
+        return "Neutral ⚪", score
 
-# --- 5. CORE ENGINE ---
+
+# ==============================================================================
+# 4. MESIN INTI (DATA & AI)
+# ==============================================================================
+
 def add_indicators_clean(df):
+    """Menambahkan indikator teknis dan membersihkan data."""
     df = df.copy()
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
@@ -117,6 +145,7 @@ def add_indicators_clean(df):
 
 @st.cache_data(ttl=300)
 def fetch_market_data(ticker, period, interval):
+    """Mengambil data pasar dari Yahoo Finance dengan cache."""
     try:
         data = yf.download(ticker, period=period, interval=interval, progress=False, timeout=10)
         if data.empty:
@@ -127,21 +156,30 @@ def fetch_market_data(ticker, period, interval):
         return pd.DataFrame()
 
 def train_ai_pro(ticker, interval, period, epochs):
-    K.clear_session(); gc.collect()
+    """
+    Melatih model LSTM untuk prediksi harga.
+    Model selalu dilatih ulang setiap kali fungsi dipanggil (sesuai permintaan).
+    """
+    K.clear_session()
+    gc.collect()
+    
     df_raw = fetch_market_data(ticker, period, interval)
     if df_raw.empty or len(df_raw) < 60:
         return None, 0
-    if isinstance(df_raw.columns, pd.MultiIndex): df_raw.columns = df_raw.columns.get_level_values(0)
-    df_clean = add_indicators_clean(df_raw)
     
+    if isinstance(df_raw.columns, pd.MultiIndex):
+        df_raw.columns = df_raw.columns.get_level_values(0)
+        
+    df_clean = add_indicators_clean(df_raw)
     features = ['Close', 'Volume', 'RSI', 'MACD']
-    scaler = RobustScaler() 
+    scaler = RobustScaler()
     scaled_data = scaler.fit_transform(df_clean[features].values)
     
-    window = 30 
+    window = 30
     x, y = [], []
     for i in range(window, len(scaled_data)):
-        x.append(scaled_data[i-window:i]); y.append(scaled_data[i, 0])
+        x.append(scaled_data[i-window:i])
+        y.append(scaled_data[i, 0])
     
     model = Sequential([
         Input(shape=(window, 4)),
@@ -165,35 +203,23 @@ def train_ai_pro(ticker, interval, period, epochs):
     
     return df_clean, res_pred
 
-# --- 6. MODULES TAMBAHAN ---
-# INTEGRASI SENTIMEN: Fungsi untuk menganalisis sentimen
-def get_sentiment(text):
-    analyzer = SentimentIntensityAnalyzer()
-    sentiment_dict = analyzer.polarity_scores(text)
-    
-    # Skor compound adalah skor gabungan yang paling berguna
-    score = sentiment_dict['compound']
-    
-    if score >= 0.05:
-        return "Positive 🟢", score
-    elif score <= -0.05:
-        return "Negative 🔴", score
-    else:
-        return "Neutral ⚪", score
 
-# INTEGRASI SENTIMEN: Modifikasi fungsi berita untuk menyertakan sentimen
+# ==============================================================================
+# 5. FUNGSI TAMBAHAN (BERITA)
+# ==============================================================================
+
 def get_news_aggregator(ticker):
+    """Mengambil berita terkini dan menganalisis sentimennya."""
     try:
         t = yf.Ticker(ticker)
         raw_news = t.news
-        if not raw_news: return []
+        if not raw_news:
+            return []
         
         processed_news = []
-        for n in raw_news[:3]: # Ambil 3 berita teratas
+        for n in raw_news[:3]:
             title = n.get('title') or "Intelligence Update"
             publisher = n.get('publisher') or "Unknown Source"
-            
-            # Analisis sentimen judul berita
             sentiment, score = get_sentiment(title)
             
             processed_news.append({
@@ -207,10 +233,38 @@ def get_news_aggregator(ticker):
         st.caption(f"Tidak bisa mengambil berita untuk {ticker}: {e}")
         return []
 
-# --- 7. MAIN DASHBOARD ---
+
+# ==============================================================================
+# 6. DASHBOARD UTAMA APLIKASI
+# ==============================================================================
+
+# --- Navigasi Sidebar ---
+with st.sidebar:
+    st.markdown('<div class="logo-container">TAKATRADE PRO</div>', unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #FFD700; font-family: sans-serif; font-size: 10px; letter-spacing: 2px; margin-top: -15px; margin-bottom: 25px; opacity: 0.85; font-weight: bold;'>TERMINAL TRADING CERDAS</p>", unsafe_allow_html=True)
+    
+    selected = option_menu(
+        None, 
+        ["Intelligence", "Radar", "Settings"], 
+        icons=['cpu-fill', 'broadcast', 'gear-fill'], 
+        default_index=0, 
+        styles={"nav-link-selected": {"background-color": "#FFD700", "color": "black", "font-weight": "bold"}}
+    )
+    
+    st.markdown("---")
+    st.subheader("⏱️ Forecasting Horizon")
+    horizon_label = st.select_slider("Pilih Jangka Waktu", options=["5m", "10m", "15m", "30m", "1h", "1d", "1wk", "1mo"])
+    interval_map = {"5m":"5m", "10m":"2m", "15m":"15m", "30m":"30m", "1h":"60m", "1d":"1d", "1wk":"1wk", "1mo":"1mo"}
+    period_map = {"5m":"1d", "10m":"1d", "15m":"5d", "30m":"5d", "1h":"1mo", "1d":"3y", "1wk":"max", "1mo":"max"}
+    
+    if "epochs" not in st.session_state: st.session_state.epochs = 15
+    if "modal" not in st.session_state: st.session_state.modal = 1000
+
+# --- Tab Intelligence ---
 if selected == "Intelligence":
     waktu_wib = datetime.utcnow() + timedelta(hours=7)
     st.markdown(f"### TAKATRADE Pro | {waktu_wib.strftime('%H:%M:%S')} WIB")
+    
     c1, c2 = st.columns([1, 2])
     with c1: kat = st.selectbox("📂 Universe", list(database_aset.keys()))
     with c2: pilihan = st.multiselect("🔎 Aset", database_aset[kat], default=database_aset[kat][0])
@@ -257,7 +311,6 @@ if selected == "Intelligence":
                         </div>
                     """, unsafe_allow_html=True)
 
-                    # INTEGRASI SENTIMEN: Tampilkan berita beserta sentimennya
                     news = get_news_aggregator(t)
                     if news:
                         with st.expander("📰 Latest Market Intelligence & Sentiment"):
@@ -265,39 +318,26 @@ if selected == "Intelligence":
                                 st.markdown(f"""
                                     <div class='news-card'>
                                         <b>{n['title']}</b>
-                                        <br>
-                                        <small style='color: #888;'>Sumber: {n['publisher']}</small>
-                                        <br>
-                                        <small style='color: #FFD700; font-weight: bold;'>Sentiment: {n['sentiment']} (Score: {n['score']:.2f})</small>
+                                        <br><small style='color: #888;'>Sumber: {n['publisher']}</small>
+                                        <br><small style='color: #FFD700; font-weight: bold;'>Sentiment: {n['sentiment']} (Score: {n['score']:.2f})</small>
                                     </div>
                                 """, unsafe_allow_html=True)
 
                     fig = go.Figure()
-                    fig.add_trace(go.Candlestick(
-                        x=df_res.index[-60:], open=df_res['Open'], high=df_res['High'], 
-                        low=df_res['Low'], close=df_res['Close'], name="Market",
-                        increasing_line_color='#00FFCC', decreasing_line_color='#FF4B4B'
-                    ))
+                    fig.add_trace(go.Candlestick(x=df_res.index[-60:], open=df_res['Open'], high=df_res['High'], low=df_res['Low'], close=df_res['Close'], name="Market", increasing_line_color='#00FFCC', decreasing_line_color='#FF4B4B'))
                     fig.add_trace(go.Scatter(x=df_res.index[-60:], y=df_res['Upper'], line=dict(color='rgba(255,215,0,0.3)', width=1.5), name="BB Upper"))
                     fig.add_trace(go.Scatter(x=df_res.index[-60:], y=df_res['Lower'], line=dict(color='rgba(255,215,0,0.3)', width=1.5), fill='tonexty', fillcolor='rgba(255,215,0,0.03)', name="BB Lower"))
-                    
-                    fig.update_layout(
-                        template="plotly_dark", xaxis_rangeslider_visible=False, height=550, 
-                        paper_bgcolor='black', plot_bgcolor='black', margin=dict(l=10, r=10, t=30, b=10),
-                        yaxis=dict(gridcolor='rgba(255,255,255,0.05)', title="Price Action", side="right")
-                    )
+                    fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, height=550, paper_bgcolor='black', plot_bgcolor='black', margin=dict(l=10, r=10, t=30, b=10), yaxis=dict(gridcolor='rgba(255,255,255,0.05)', title="Price Action", side="right"))
                     st.plotly_chart(fig, use_container_width=True)
                     
+                    # --- Backtesting Module ---
                     st.markdown("---")
                     with st.expander("📊 AI Performance Backtest (Walk-Forward Analysis)"):
                         with st.spinner("Validating historical accuracy..."):
-                            hist_data = df_clean.copy()
+                            hist_data = df_res.copy() # Perbaikan: Gunakan df_res
                             features_bt = ['Close', 'Volume', 'RSI', 'MACD']
                             scaler_bt = RobustScaler()
-                            
-                            win_count = 0
-                            total_tests = 0
-                            window_bt = 30
+                            win_count, total_tests, window_bt = 0, 0, 30
                             
                             for i in range(len(hist_data) - window_bt - 5):
                                 train_data = hist_data.iloc[i : i + window_bt]
@@ -331,6 +371,7 @@ if selected == "Intelligence":
                             c_bt3.metric("Model Stability", "EXCELLENT" if win_rate > 60 else "STABLE")
                             st.caption("Analisis pembanding arah prediksi AI dengan data historis menggunakan simulasi walk-forward. Komputasi intensif.")
 
+# --- Tab Radar ---
 elif selected == "Radar":
     st.markdown("### 📡 Market Radar Scan")
     radar_kat = st.selectbox("Universe", list(database_aset.keys()))
@@ -353,11 +394,13 @@ elif selected == "Radar":
             report = "📡 *RADAR SCAN REPORT*\n" + "\n".join([f"- {r['Aset']}: {r['Signal']} ({r['Forecast']})" for r in results[:10]])
             send_telegram_alert(report)
 
+# --- Tab Settings ---
 else:
     st.title("⚙️ Settings")
     st.session_state.epochs = st.slider("Model Precision (Epochs)", 10, 60, 20)
     st.session_state.modal = st.number_input("Trading Capital ($)", value=1000)
 
+# Footer
 st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learning")
 
 # Install
@@ -370,6 +413,7 @@ st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learni
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
