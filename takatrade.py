@@ -10,8 +10,13 @@ from tensorflow.keras import backend as K
 import plotly.graph_objects as go
 from streamlit_option_menu import option_menu
 from datetime import datetime, timedelta
-import gc 
-import requests  # Tambahan untuk Telegram
+import gc
+import requests
+import os
+from dotenv import load_dotenv
+
+# Muat variabel dari file .env
+load_dotenv()
 
 # Menghilangkan warning dekoratif pandas
 pd.options.mode.chained_assignment = None
@@ -53,16 +58,21 @@ stock_id = sorted(["BBCA.JK", "BBRI.JK", "BMRI.JK", "BBNI.JK", "TLKM.JK", "ASII.
 
 database_aset = {"🌍 GLOBAL MARKET & FOREX": global_indices_forex, "💎 CRYPTOCURRENCY": crypto_list, "🇺🇸 US STOCKS": stock_us, "🇮🇩 INDONESIA STOCKS": stock_id}
 
-# --- 3. TELEGRAM ENGINE (MODULAR) ---
+# --- 3. TELEGRAM ENGINE (MODULAR & AMAN) ---
 def send_telegram_alert(message):
-    # SILAKAN ISI TOKEN & ID ANDA DI SINI
-    token = "8537224943:AAFDTpCWTVN_Q3K3KjbVXe82YP1-80Y1r_E"
-    chat_id = "6632588873"
-    if token == "8537224943:AAFDTpCWTVN_Q3K3KjbVXe82YP1-80Y1r_E": return
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+
+    if not token or not chat_id or token == "YOUR_TOKEN_HERE" or chat_id == "YOUR_CHAT_ID_HERE":
+        st.warning("Telegram Alert tidak aktif. Silakan atur TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID di file .env")
+        return
+        
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
-    try: requests.post(url, data=payload, timeout=5)
-    except: pass
+    try:
+        requests.post(url, data=payload, timeout=5)
+    except requests.exceptions.RequestException as e:
+        st.error(f"Gagal mengirim notifikasi Telegram: {e}")
 
 # --- 4. SIDEBAR NAVIGATION ---
 with st.sidebar:
@@ -101,14 +111,20 @@ def add_indicators_clean(df):
 def fetch_market_data(ticker, period, interval):
     try:
         data = yf.download(ticker, period=period, interval=interval, progress=False, timeout=10)
+        if data.empty:
+            st.error(f"Tidak dapat menemukan data untuk ticker '{ticker}'. Periksa kembali simbol ticker.")
         return data
-    except:
+    except Exception as e:
+        st.error(f"Gagal mengambil data untuk '{ticker}'. Error: {e}. Periksa koneksi internet Anda.")
         return pd.DataFrame()
 
+# --- PERUBAHAN DI SINI ---
+# DIKEMBALIKAN: Model akan selalu dilatih ulang setiap kali fungsi dipanggil
 def train_ai_pro(ticker, interval, period, epochs):
     K.clear_session(); gc.collect()
     df_raw = fetch_market_data(ticker, period, interval)
-    if df_raw.empty or len(df_raw) < 60: return None, 0, 0
+    if df_raw.empty or len(df_raw) < 60:
+        return None, 0
     if isinstance(df_raw.columns, pd.MultiIndex): df_raw.columns = df_raw.columns.get_level_values(0)
     df_clean = add_indicators_clean(df_raw)
     
@@ -141,7 +157,7 @@ def train_ai_pro(ticker, interval, period, epochs):
     pred_scaled = model.predict(last_batch, verbose=0)
     res_pred = scaler.inverse_transform([[pred_scaled[0,0], 0, 0, 0]])[0,0]
     
-    return df_clean, res_pred, 97.2
+    return df_clean, res_pred
 
 # --- 6. MODULES TAMBAHAN ---
 def get_news_aggregator(ticker):
@@ -150,7 +166,9 @@ def get_news_aggregator(ticker):
         raw_news = t.news
         if not raw_news: return []
         return [{'title': n.get('title') or "Intelligence Update"} for n in raw_news[:3]]
-    except: return []
+    except Exception as e:
+        st.caption(f"Tidak bisa mengambil berita untuk {ticker}: {e}")
+        return []
 
 # --- 7. MAIN DASHBOARD ---
 if selected == "Intelligence":
@@ -165,7 +183,7 @@ if selected == "Intelligence":
         for i, t in enumerate(pilihan):
             with tabs[i]:
                 with st.spinner(f'AI memproses {t}...'):
-                    df_res, pred, acc = train_ai_pro(t, interval_map[horizon_label], period_map[horizon_label], st.session_state.epochs)
+                    df_res, pred = train_ai_pro(t, interval_map[horizon_label], period_map[horizon_label], st.session_state.epochs)
                     
                     if df_res is None or pred == 0:
                         st.warning(f"Data {t} tidak mencukupi. Coba timeframe/periode lebih besar.")
@@ -182,7 +200,6 @@ if selected == "Intelligence":
                     elif pct < -0.6: action, color = "STRONG SELL 🔴", "#FF4B4B"
                     else: action, color = "HOLD ⚖️", "#FFA500"
 
-                    # --- TELEGRAM ALERT TRIGGER ---
                     if "STRONG" in action:
                         alert_msg = f"🚀 *TAKATRADE ALERT*\nAset: {t}\nSinyal: {action}\nHarga: {curr:,.2f}\nTarget: {pred:,.2f} ({pct:+.2f}%)"
                         send_telegram_alert(alert_msg)
@@ -225,25 +242,48 @@ if selected == "Intelligence":
                     )
                     st.plotly_chart(fig, use_container_width=True)
                     
-                    # --- BACKTESTING MODULE (NEW) ---
                     st.markdown("---")
                     with st.expander("📊 AI Performance Backtest (Walk-Forward Analysis)"):
                         with st.spinner("Validating historical accuracy..."):
-                            hist_data = df_res['Close'].tail(40).values
-                            matches = 0
-                            total_tests = len(hist_data) - 10
-                            for j in range(total_tests):
-                                p_now = hist_data[j]
-                                p_future = hist_data[j+5]
-                                actual_move = "UP" if p_future > p_now else "DOWN"
-                                predicted_move = "UP" if pct > 0 else "DOWN"
-                                if actual_move == predicted_move: matches += 1
-                            win_rate = (matches / total_tests) * 100 if total_tests > 0 else 0
+                            hist_data = df_clean.copy()
+                            features_bt = ['Close', 'Volume', 'RSI', 'MACD']
+                            scaler_bt = RobustScaler()
+                            
+                            win_count = 0
+                            total_tests = 0
+                            window_bt = 30
+                            
+                            for i in range(len(hist_data) - window_bt - 5):
+                                train_data = hist_data.iloc[i : i + window_bt]
+                                if len(train_data) < window_bt: continue
+                                
+                                scaled_train = scaler_bt.fit_transform(train_data[features_bt].values)
+                                x_train = np.array([scaled_train[j-window_bt:j] for j in range(window_bt, len(scaled_train))])
+                                y_train = np.array([scaled_train[j, 0] for j in range(window_bt, len(scaled_train))])
+
+                                if len(x_train) > 0:
+                                    mini_model = Sequential([Input(shape=(window_bt, 4)), LSTM(50, activation='relu'), Dense(1)])
+                                    mini_model.compile(optimizer='adam', loss='huber')
+                                    mini_model.fit(x_train, y_train, epochs=5, verbose=0)
+                                    
+                                    last_batch_scaled = scaled_train[-window_bt:].reshape(1, window_bt, 4)
+                                    pred_scaled = mini_model.predict(last_batch_scaled, verbose=0)
+                                    pred_price = scaler_bt.inverse_transform([[pred_scaled[0,0], 0,0,0]])[0,0]
+                                    
+                                    actual_future_price = hist_data['Close'].iloc[i + window_bt + 5]
+                                    
+                                    if (pred_price > train_data['Close'].iloc[-1] and actual_future_price > train_data['Close'].iloc[-1]) or \
+                                       (pred_price < train_data['Close'].iloc[-1] and actual_future_price < train_data['Close'].iloc[-1]):
+                                        win_count += 1
+                                    total_tests += 1
+                                    K.clear_session()
+
+                            win_rate = (win_count / total_tests) * 100 if total_tests > 0 else 0
                             c_bt1, c_bt2, c_bt3 = st.columns(3)
                             c_bt1.metric("Historical Win Rate", f"{win_rate:.1f}%")
                             c_bt2.metric("Predictive Alpha", f"{(win_rate - 50) * 0.1:+.2f}")
                             c_bt3.metric("Model Stability", "EXCELLENT" if win_rate > 60 else "STABLE")
-                            st.caption("Analisis pembanding arah prediksi AI dengan data historis 40 periode terakhir.")
+                            st.caption("Analisis pembanding arah prediksi AI dengan data historis menggunakan simulasi walk-forward. Komputasi intensif.")
 
 elif selected == "Radar":
     st.markdown("### 📡 Market Radar Scan")
@@ -254,7 +294,7 @@ elif selected == "Radar":
         assets = database_aset[radar_kat]
         for idx, ticker in enumerate(assets):
             progress.progress((idx + 1) / len(assets))
-            df_r, pred_r, _ = train_ai_pro(ticker, interval_map[horizon_label], period_map[horizon_label], 10)
+            df_r, pred_r = train_ai_pro(ticker, interval_map[horizon_label], period_map[horizon_label], 10)
             if df_r is not None:
                 curr_r = df_r['Close'].iloc[-1]
                 pct_r = ((pred_r - curr_r) / curr_r) * 100
@@ -263,7 +303,6 @@ elif selected == "Radar":
         
         st.dataframe(pd.DataFrame(results), use_container_width=True)
         
-        # --- AUTOMATED REPORTING TELEGRAM ---
         if results:
             report = "📡 *RADAR SCAN REPORT*\n" + "\n".join([f"- {r['Aset']}: {r['Signal']} ({r['Forecast']})" for r in results[:10]])
             send_telegram_alert(report)
@@ -285,6 +324,7 @@ st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learni
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
