@@ -15,6 +15,17 @@ import requests
 import os
 from dotenv import load_dotenv
 
+# INTEGRASI SENTIMEN: Tambahkan library untuk analisis sentimen
+import nltk
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
+# INTEGRASI SENTIMEN: Pastikan data yang dibutuhkan NLTK sudah diunduh
+# Ini penting agar tidak error saat dijalankan di server
+try:
+    nltk.data.find('sentiment/vader_lexicon.zip')
+except nltk.downloader.DownloadError:
+    nltk.download('vader_lexicon')
+
 # Muat variabel dari file .env
 load_dotenv()
 
@@ -118,8 +129,6 @@ def fetch_market_data(ticker, period, interval):
         st.error(f"Gagal mengambil data untuk '{ticker}'. Error: {e}. Periksa koneksi internet Anda.")
         return pd.DataFrame()
 
-# --- PERUBAHAN DI SINI ---
-# DIKEMBALIKAN: Model akan selalu dilatih ulang setiap kali fungsi dipanggil
 def train_ai_pro(ticker, interval, period, epochs):
     K.clear_session(); gc.collect()
     df_raw = fetch_market_data(ticker, period, interval)
@@ -160,12 +169,43 @@ def train_ai_pro(ticker, interval, period, epochs):
     return df_clean, res_pred
 
 # --- 6. MODULES TAMBAHAN ---
+# INTEGRASI SENTIMEN: Fungsi untuk menganalisis sentimen
+def get_sentiment(text):
+    analyzer = SentimentIntensityAnalyzer()
+    sentiment_dict = analyzer.polarity_scores(text)
+    
+    # Skor compound adalah skor gabungan yang paling berguna
+    score = sentiment_dict['compound']
+    
+    if score >= 0.05:
+        return "Positive 🟢", score
+    elif score <= -0.05:
+        return "Negative 🔴", score
+    else:
+        return "Neutral ⚪", score
+
+# INTEGRASI SENTIMEN: Modifikasi fungsi berita untuk menyertakan sentimen
 def get_news_aggregator(ticker):
     try:
         t = yf.Ticker(ticker)
         raw_news = t.news
         if not raw_news: return []
-        return [{'title': n.get('title') or "Intelligence Update"} for n in raw_news[:3]]
+        
+        processed_news = []
+        for n in raw_news[:3]: # Ambil 3 berita teratas
+            title = n.get('title') or "Intelligence Update"
+            publisher = n.get('publisher') or "Unknown Source"
+            
+            # Analisis sentimen judul berita
+            sentiment, score = get_sentiment(title)
+            
+            processed_news.append({
+                'title': title, 
+                'publisher': publisher,
+                'sentiment': sentiment, 
+                'score': score
+            })
+        return processed_news
     except Exception as e:
         st.caption(f"Tidak bisa mengambil berita untuk {ticker}: {e}")
         return []
@@ -220,11 +260,20 @@ if selected == "Intelligence":
                         </div>
                     """, unsafe_allow_html=True)
 
+                    # INTEGRASI SENTIMEN: Tampilkan berita beserta sentimennya
                     news = get_news_aggregator(t)
                     if news:
-                        with st.expander("📰 Latest Market Intelligence"):
+                        with st.expander("📰 Latest Market Intelligence & Sentiment"):
                             for n in news:
-                                st.markdown(f"<div class='news-card'><b>{n['title']}</b></div>", unsafe_allow_html=True)
+                                st.markdown(f"""
+                                    <div class='news-card'>
+                                        <b>{n['title']}</b>
+                                        <br>
+                                        <small style='color: #888;'>Sumber: {n['publisher']}</small>
+                                        <br>
+                                        <small style='color: #FFD700; font-weight: bold;'>Sentiment: {n['sentiment']} (Score: {n['score']:.2f})</small>
+                                    </div>
+                                """, unsafe_allow_html=True)
 
                     fig = go.Figure()
                     fig.add_trace(go.Candlestick(
@@ -324,6 +373,7 @@ st.caption("TAKATRADE PRO © 2026 | Terminal Trading Cerdas Berbasis Deep Learni
 # Kualitas Koneksi: Data ditarik secara real-time dari Yahoo Finance. Pastikan koneksi internet stabil agar proses download data tidak terputus di tengah jalan.
 
 # Akurasi Bukan Kepastian: Ingat, skor AI Confidence yang muncul adalah cerminan masa lalu. Jika skornya rendah (di bawah 70%), sebaiknya jangan mengambil keputusan hanya berdasarkan AI tersebut.
+
 
 
 
